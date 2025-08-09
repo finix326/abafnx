@@ -1,0 +1,60 @@
+name: finix
+description: Otizm terapisi için kart uygulaması
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  flutter_sound: ^9.2.13
+  permission_handler: ^11.3.1
+  path_provider: ^2.1.2
+  image_picker: ^1.1.0
+  fl_chart: ^0.66.0
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/top.png
+    - assets/araba.png
+    - assets/otobus.png
+    - assets/kamyon.png
+    - assets/doktor.png
+    - assets/ogretmen.png
+    - assets/polis.png
+    - assets/kedi.png
+    - assets/logo.png
+    - assets/meslekler/asci.png
+    - assets/meslekler/ciftci.png
+    - assets/meslekler/doktor.png
+    - assets/meslekler/muhendis.png
+    - assets/meslekler/polis.png
+    - assets/meslekler/ressam.png
+    - assets/meslekler/tamirci.png
+    - assets/nesneler/bardak.png
+    - assets/nesneler/buzdolabi.png
+    - assets/nesneler/kutu.png
+    - assets/nesneler/lamba.png
+    - assets/nesneler/masa.png
+    - assets/nesneler/saat.png
+    - assets/nesneler/sandalyee.png
+    - assets/tasıtlar/
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/logo.png"
