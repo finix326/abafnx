@@ -1,40 +1,3 @@
-<<<<<<< HEAD
-# OS
-.DS_Store
-
-# IDE
-.idea/
-.vscode/
-*.iml
-
-# Flutter / Dart
-.dart_tool/
-.packages
-.flutter-plugins
-.flutter-plugins-dependencies
-.melos_tool/
-.pub-cache/
-.pub/
-build/
-
-# Platforms
-android/.gradle/
-android/captures/
-ios/Pods/
-ios/Flutter/.last_build_id
-ios/Flutter/ephemeral/
-macos/Flutter/ephemeral/
-linux/flutter/ephemeral/
-windows/flutter/ephemeral/
-web/.dart_tool/
-
-# Coverage
-coverage/
-
-# Xcode user junk
-**/xcuserdata/
-*.xcuserstate
-=======
 # Miscellaneous
 *.class
 *.log
@@ -80,4 +43,3 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
->>>>>>> bd15fce (Initial commit)
