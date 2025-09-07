@@ -27,16 +27,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/top.png
-    - assets/araba.png
-    - assets/otobus.png
-    - assets/kamyon.png
-    - assets/doktor.png
-    - assets/ogretmen.png
-    - assets/polis.png
-    - assets/kedi.png
-    - assets/logo.png
-    - assets/meslekler/asci.png
+    - assets/meslekler/ascı.png
     - assets/meslekler/ciftci.png
     - assets/meslekler/doktor.png
     - assets/meslekler/muhendis.png
@@ -44,13 +35,19 @@ flutter:
     - assets/meslekler/ressam.png
     - assets/meslekler/tamirci.png
     - assets/nesneler/bardak.png
-    - assets/nesneler/buzdolabi.png
+    - assets/nesneler/buzdolabı.png
     - assets/nesneler/kutu.png
     - assets/nesneler/lamba.png
     - assets/nesneler/masa.png
     - assets/nesneler/saat.png
-    - assets/nesneler/sandalyee.png
-    - assets/tasıtlar/
+    - assets/nesneler/sandelyee.png
+    - assets/tasıtlar/araba.png
+    - assets/tasıtlar/helikopter.png
+    - assets/tasıtlar/kepce.png
+    - assets/tasıtlar/motor.png
+    - assets/tasıtlar/otobus.png
+    - assets/tasıtlar/traktor.png
+    - assets/tasıtlar/ucak.png
 
 flutter_icons:
   android: true
