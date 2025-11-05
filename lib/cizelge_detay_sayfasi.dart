@@ -1,30 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
+
+import 'app_state/current_student.dart';
 
 class CizelgeDetaySayfasi extends StatefulWidget {
   final String cizelgeAdi;
-  final String tur;
+  final String tur; // 'yazili'
 
-  const CizelgeDetaySayfasi({super.key, required this.cizelgeAdi, required this.tur});
+  const CizelgeDetaySayfasi({
+    super.key,
+    required this.cizelgeAdi,
+    required this.tur,
+  });
 
   @override
   State<CizelgeDetaySayfasi> createState() => _CizelgeDetaySayfasiState();
 }
 
 class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
-  late Box _box;
-  List<String> _icerik = [];
-  List<Color> _renkler = [];
-  bool kartModu = false;
+  Box? _box;
   final PageController _pageController = PageController();
 
-  @override
-  void initState() {
-    super.initState();
-    _box = Hive.box('cizelge_kutusu');
-    final veri = _box.get(widget.cizelgeAdi);
-    _icerik = List<String>.from(veri['icerik']);
-    _renkler = List.generate(_icerik.length, (_) => Colors.white);
+  final List<String> _icerik = [];
+  final List<Color> _renkler = [];
+
+  Future<Box> _openBox(BuildContext context) async {
+    final currentId = context.read<CurrentStudent>().currentId;
+    final name =
+    (currentId != null && currentId.isNotEmpty) ? 'cizelge_kutusu_$currentId' : 'cizelge_kutusu';
+    return Hive.openBox(name);
+  }
+
+  Future<void> _yukle(Box box) async {
+    final veri = box.get(widget.cizelgeAdi);
+    final list = (veri is Map) ? veri['icerik'] : null;
+    _icerik
+      ..clear()
+      ..addAll(List<String>.from(list ?? const []));
+    if (_icerik.isEmpty) _icerik.add('');
+    _renkler
+      ..clear()
+      ..addAll(List<Color>.generate(_icerik.length, (_) => Colors.white));
+    setState(() {});
   }
 
   void _yeniKartEkle() {
@@ -34,111 +53,100 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
     });
   }
 
-  void _kaydet() {
-    final veri = _box.get(widget.cizelgeAdi);
-    veri['icerik'] = _icerik;
-    _box.put(widget.cizelgeAdi, veri);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kaydedildi')));
-  }
-
-  void _renkSec(int index, Color renk) {
-    setState(() {
-      if (_renkler[index] == renk) {
-        _renkler[index] = Colors.white;
-      } else {
-        _renkler[index] = renk;
-      }
+  Future<void> _kaydet() async {
+    final box = _box;
+    if (box == null) return;
+    final eski = (box.get(widget.cizelgeAdi) as Map?) ?? {};
+    await box.put(widget.cizelgeAdi, {
+      ...eski,
+      'tur': 'yazili',
+      'icerik': _icerik,
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
     });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Kaydedildi')));
   }
 
-  Widget _renkButonlari(int index) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        IconButton(
-          icon: const Icon(Icons.check, color: Colors.green),
-          onPressed: () => _renkSec(index, Colors.green),
-        ),
-        IconButton(
-          icon: const Icon(Icons.close, color: Colors.red),
-          onPressed: () => _renkSec(index, Colors.red),
-        ),
-      ],
-    );
+  void _renkSec(int i, Color c) {
+    setState(() => _renkler[i] = (_renkler[i] == c) ? Colors.white : c);
   }
+
+  Widget _renkButonlari(int i) => Row(
+    mainAxisAlignment: MainAxisAlignment.end,
+    children: [
+      IconButton(
+        icon: const Icon(Icons.check, color: Colors.green),
+        onPressed: () => _renkSec(i, Colors.green),
+      ),
+      IconButton(
+        icon: const Icon(Icons.close, color: Colors.red),
+        onPressed: () => _renkSec(i, Colors.red),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.cizelgeAdi),
-        actions: [
-          IconButton(icon: const Icon(Icons.save), onPressed: _kaydet),
-          IconButton(icon: const Icon(Icons.add), onPressed: _yeniKartEkle),
-          IconButton(
-            icon: Icon(kartModu ? Icons.list : Icons.view_agenda),
-            onPressed: () => setState(() => kartModu = !kartModu),
+    return FutureBuilder<Box>(
+      future: _openBox(context),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (!snap.hasData) {
+          return Scaffold(
+            appBar: AppBar(title: Text(widget.cizelgeAdi)),
+            body: const Center(child: Text('Kutu açılamadı')),
+          );
+        }
+        if (_box == null) {
+          _box = snap.data!;
+          _yukle(_box!);
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(widget.cizelgeAdi),
+            actions: [
+              IconButton(icon: const Icon(Icons.save), onPressed: _kaydet),
+              IconButton(icon: const Icon(Icons.add), onPressed: _yeniKartEkle),
+              IconButton(
+                icon: const Icon(Icons.view_agenda),
+                tooltip: 'Kart modunda göster',
+                onPressed: () {
+                  // Sade: Liste görünümünden kart görünümüne hızlı geçiş
+                  _pageController.jumpToPage(0);
+                },
+              ),
+            ],
           ),
-        ],
-      ),
-      body: kartModu
-          ? PageView.builder(
-        controller: _pageController,
-        itemCount: _icerik.length,
-        itemBuilder: (context, index) {
-          final controller = TextEditingController(text: _icerik[index]);
-          return Center(
-            child: Container(
-              width: MediaQuery.of(context).size.width * 0.8,
-              height: MediaQuery.of(context).size.height * 0.5,
-              child: Card(
-                color: _renkler[index],
+          body: ListView.builder(
+            itemCount: _icerik.length,
+            itemBuilder: (context, i) {
+              final controller = TextEditingController(text: _icerik[i]);
+              return Card(
+                margin: const EdgeInsets.all(12),
+                color: _renkler[i],
                 child: Padding(
-                  padding: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       TextField(
                         controller: controller,
-                        onChanged: (deger) => _icerik[index] = deger,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 24),
+                        onChanged: (v) => _icerik[i] = v,
                         decoration: const InputDecoration(border: InputBorder.none),
                         maxLines: null,
                       ),
-                      const SizedBox(height: 20),
-                      _renkButonlari(index),
+                      _renkButonlari(i),
                     ],
                   ),
                 ),
-              ),
-            ),
-          );
-        },
-      )
-          : ListView.builder(
-        itemCount: _icerik.length,
-        itemBuilder: (context, index) {
-          final controller = TextEditingController(text: _icerik[index]);
-          return Card(
-            margin: const EdgeInsets.all(12),
-            color: _renkler[index],
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: controller,
-                    onChanged: (deger) => _icerik[index] = deger,
-                    decoration: const InputDecoration(border: InputBorder.none),
-                  ),
-                  _renkButonlari(index),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

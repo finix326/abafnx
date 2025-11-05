@@ -14,11 +14,10 @@ class _SiniflamaOyunuSayfasiState extends State<SiniflamaOyunuSayfasi> {
     {'ad': 'Araba', 'kategori': 'Taşıtlar', 'resim': 'assets/tasitlar/araba.png'},
     {'ad': 'Otobüs', 'kategori': 'Taşıtlar', 'resim': 'assets/tasitlar/otobus.png'},
     {'ad': 'Kamyon', 'kategori': 'Taşıtlar', 'resim': 'assets/tasitlar/kamyon.png'},
-    {'ad': 'Doktor', 'kategori': 'Meslekler', 'resim': 'assets/doktor.png'},
-    {'ad': 'Öğretmen', 'kategori': 'Meslekler', 'resim': 'assets/ogretmen.png'},
-    {'ad': 'Polis', 'kategori': 'Meslekler', 'resim': 'assets/polis.png'},
+    {'ad': 'Doktor', 'kategori': 'Meslekler', 'resim': 'assets/meslekler/doktor.png'},
+    {'ad': 'Öğretmen', 'kategori': 'Meslekler', 'resim': 'assets/meslekler/ogretmen.png'},
+    {'ad': 'Polis', 'kategori': 'Meslekler', 'resim': 'assets/meslekler/polis.png'},
     {'ad': 'Kedi', 'kategori': 'Diğer', 'resim': 'assets/kedi.png'},
-    {'ad': 'Sepet', 'kategori': 'Diğer', 'resim': 'assets/sepet.png'},
   ];
 
   List<String> tasitlar = [];
@@ -47,6 +46,16 @@ class _SiniflamaOyunuSayfasiState extends State<SiniflamaOyunuSayfasi> {
     zamanlayici?.cancel();
     kronometre.stop();
     super.dispose();
+  }
+
+  Widget _img(String path, {double? w, double? h}) {
+    return Image.asset(
+      path,
+      width: w,
+      height: h,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 48),
+    );
   }
 
   void yenidenBaslat() {
@@ -81,14 +90,14 @@ class _SiniflamaOyunuSayfasiState extends State<SiniflamaOyunuSayfasi> {
             children: draggableItems.map((nesne) {
               return Draggable<String>(
                 data: nesne['ad'],
-                child: Image.asset(nesne['resim'], width: 80, height: 80),
+                child: _img(nesne['resim'], w: 80, h: 80),
                 feedback: Material(
                   color: Colors.transparent,
-                  child: Image.asset(nesne['resim'], width: 80, height: 80),
+                  child: _img(nesne['resim'], w: 80, h: 80),
                 ),
                 childWhenDragging: Opacity(
                   opacity: 0.5,
-                  child: Image.asset(nesne['resim'], width: 80, height: 80),
+                  child: _img(nesne['resim'], w: 80, h: 80),
                 ),
               );
             }).toList(),
@@ -149,28 +158,45 @@ class _SiniflamaOyunuSayfasiState extends State<SiniflamaOyunuSayfasi> {
         });
       },
       builder: (context, candidateData, rejectedData) {
-        return Container(
-          width: 150,
-          height: 200,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.green, width: 2),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Column(
+        return SizedBox(
+          width: 180,
+          height: 220,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              Text(
-                kategori,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              // Basket background
+              _img('assets/sepet.png', w: 180, h: 220),
+              // Category label on top
+              Positioned(
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    kategori,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
-              const SizedBox(height: 10),
-              ...hedefListe.map((e) {
-                final nesne = nesneler.firstWhere((n) => n['ad'] == e);
-                return Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: Image.asset(nesne['resim'], width: 50, height: 50),
-                );
-              }),
+              // Dropped items grid inside basket
+              Positioned.fill(
+                top: 40,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: hedefListe.map((e) {
+                      final nesne = nesneler.firstWhere((n) => n['ad'] == e);
+                      return _img(nesne['resim'], w: 42, h: 42);
+                    }).toList(),
+                  ),
+                ),
+              ),
             ],
           ),
         );

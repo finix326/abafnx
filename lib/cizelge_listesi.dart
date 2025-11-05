@@ -1,108 +1,182 @@
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 
+import 'app_state/current_student.dart';
+
+// Detay sayfaları (sizdeki imzalar korunuyor)
 import 'cizelge_detay_sayfasi.dart';
-import 'cizelge_ekle_sayfasi.dart';
 import 'cizelge_detay_resimli_sesli_sayfasi.dart';
+import 'cizelge_ekle_sayfasi.dart';
 
-class CizelgeListesiSayfasi extends StatefulWidget {
-  const CizelgeListesiSayfasi({super.key});
+/// Öğrenciye özel kutu adı (yoksa genel kutuya düşer)
+String _boxNameForStudent(String? studentId) =>
+    (studentId != null && studentId.isNotEmpty)
+        ? 'cizelge_kutusu_$studentId'
+        : 'cizelge_kutusu';
 
-  @override
-  State<CizelgeListesiSayfasi> createState() => _CizelgeListesiSayfasiState();
+/// Eski/yanlış değerleri güvenli bir şekilde normalize et.
+String _normalizeType(dynamic raw) {
+  final s = (raw ?? '').toString().toLowerCase().trim();
+  if (s == 'yazili' || s == 'yazılı' || s == 'text' || s == 'yazi' || s == 'yazı') {
+    return 'yazili';
+  }
+  if (s == 'resimli_sesli' || s == 'media' || s.contains('resim') || s.contains('ses')) {
+    return 'resimli_sesli';
+  }
+  // bilinmiyorsa yazılıya düş
+  return 'yazili';
 }
 
-class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
-  late Box cizelgeKutusu;
+class CizelgeListesiSayfasi extends StatelessWidget {
+  const CizelgeListesiSayfasi({super.key});
 
-  @override
-  void initState() {
-    super.initState();
-    cizelgeKutusu = Hive.box('cizelge_kutusu');
-  }
-
-  void _yeniCizelgeEkle(String tur) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => CizelgeEkleSayfasi(tur: tur)),
-    );
-    setState(() {}); // Sayfayı yenile
-  }
-
-  void _cizelgeDetayGoster(String cizelgeAdi) {
-    final veri = cizelgeKutusu.get(cizelgeAdi);
-    final tur = veri['tur'];
-
-    Widget hedefSayfa;
-    if (tur == 'yazili') {
-      hedefSayfa = CizelgeDetaySayfasi(cizelgeAdi: cizelgeAdi, tur: tur);
-    } else if (tur == 'resimli_sesli') {
-      hedefSayfa = CizelgeDetayResimliSesliSayfasi(cizelgeAdi: cizelgeAdi);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Geçersiz çizelge türü.")),
-      );
-      return;
-    }
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => hedefSayfa),
-    );
-  }
-
-  void _tumCizelgeleriSil() async {
-    await cizelgeKutusu.clear();
-    setState(() {});
+  Future<Box> _openBox(BuildContext context) async {
+    final currentId = context.read<CurrentStudent?>()?.currentId;
+    return Hive.openBox(_boxNameForStudent(currentId));
   }
 
   @override
   Widget build(BuildContext context) {
-    final cizelgeAdlari = cizelgeKutusu.keys.cast<String>().toList();
+    // Öğrenci değişiminde rebuild olsun
+    final currentId = context.watch<CurrentStudent?>()?.currentId;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Çizelge Listesi'),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: _yeniCizelgeEkle,
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'yazili',
-                child: Text('Yazılı Çizelge Ekle'),
-              ),
-              PopupMenuItem(
-                value: 'resimli_sesli',
-                child: Text('Resimli / Sesli Çizelge Ekle'),
+    return FutureBuilder<Box>(
+      future: _openBox(context),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (!snap.hasData) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Çizelgeler')),
+            body: const Center(child: Text('Kutu açılamadı')),
+          );
+        }
+        final box = snap.data!;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('Çizelgeler${currentId != null ? "  (Öğrenci: $currentId)" : ""}'),
+            actions: [
+              IconButton(
+                tooltip: 'Tümünü temizle',
+                icon: const Icon(Icons.delete_sweep_outlined),
+                onPressed: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Tüm çizelgeler silinsin mi?'),
+                      content: const Text('Bu işlem geri alınamaz.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
+                        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sil')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) await box.clear();
+                },
               ),
             ],
-            icon: const Icon(Icons.add),
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          ElevatedButton(
-            onPressed: _tumCizelgeleriSil,
-            child: const Text("Tüm Çizelgeleri Temizle"),
+          body: ValueListenableBuilder(
+            valueListenable: box.listenable(),
+            builder: (context, _, __) {
+              final entries = box.keys.map((k) {
+                final v = box.get(k);
+                return MapEntry(k, Map<String, dynamic>.from((v as Map?) ?? {}));
+              }).toList()
+                ..sort((a, b) {
+                  final at = (a.value['createdAt'] ?? 0) as int;
+                  final bt = (b.value['createdAt'] ?? 0) as int;
+                  return bt.compareTo(at); // yeni en üstte
+                });
+
+              if (entries.isEmpty) {
+                return const Center(child: Text('Henüz çizelge yok. Sağ alttan ekleyin.'));
+              }
+
+              return ListView.separated(
+                itemCount: entries.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final e = entries[i];
+                  final m = e.value;
+
+                  final tur = _normalizeType(m['tur'] ?? m['type']);
+                  final ad = (m['ad'] ?? m['cizelgeAdi'] ?? e.key.toString()).toString();
+
+                  final emoji = tur == 'resimli_sesli' ? '🖼️🎙️' : '📝';
+                  final subtitle = tur == 'resimli_sesli' ? 'Resimli / Sesli' : 'Yazılı';
+
+                  return ListTile(
+                    leading: Text(emoji, style: const TextStyle(fontSize: 22)),
+                    title: Text(ad),
+                    subtitle: Text(subtitle),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      if (tur == 'resimli_sesli') {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CizelgeDetayResimliSesliSayfasi(
+                              cizelgeAdi: e.key.toString(),
+                            ),
+                          ),
+                        );
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CizelgeDetaySayfasi(
+                              cizelgeAdi: e.key.toString(),
+                              tur: 'yazili',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                },
+              );
+            },
           ),
-          Expanded(
-            child: cizelgeAdlari.isEmpty
-                ? const Center(child: Text('Henüz çizelge eklenmemiş.'))
-                : ListView.builder(
-              itemCount: cizelgeAdlari.length,
-              itemBuilder: (context, index) {
-                final ad = cizelgeAdlari[index];
-                return ListTile(
-                  leading: const Icon(Icons.list_alt),
-                  title: Text(ad),
-                  onTap: () => _cizelgeDetayGoster(ad),
-                );
-              },
-            ),
+          floatingActionButton: FloatingActionButton(
+            tooltip: 'Çizelge ekle',
+            child: const Icon(Icons.add),
+            onPressed: () async {
+              // tür seçtir → mevcut CizelgeEkleSayfasi(tur: ...) sayfasına gönder
+              final picked = await showModalBottomSheet<String>(
+                context: context,
+                builder: (_) => SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        leading: const Text('📝', style: TextStyle(fontSize: 20)),
+                        title: const Text('Yazılı Çizelge'),
+                        onTap: () => Navigator.pop(context, 'yazili'),
+                      ),
+                      ListTile(
+                        leading: const Text('🖼️🎙️', style: TextStyle(fontSize: 20)),
+                        title: const Text('Resimli + Sesli Çizelge'),
+                        onTap: () => Navigator.pop(context, 'resimli_sesli'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+              if (picked == null) return;
+
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => CizelgeEkleSayfasi(tur: _normalizeType(picked))),
+              );
+            },
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

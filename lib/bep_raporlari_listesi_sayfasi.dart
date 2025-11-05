@@ -1,56 +1,83 @@
-
-
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
-import 'bep_rapor_goruntuleme_sayfasi.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 
-class BepRaporlariListesiSayfasi extends StatefulWidget {
+import 'app_state/current_student.dart';
+import 'bep_rapor_detay_sayfasi.dart';
+
+class BepRaporlariListesiSayfasi extends StatelessWidget {
   const BepRaporlariListesiSayfasi({super.key});
 
-  @override
-  State<BepRaporlariListesiSayfasi> createState() => _BepRaporlariListesiSayfasiState();
-}
-
-class _BepRaporlariListesiSayfasiState extends State<BepRaporlariListesiSayfasi> {
-  List<Map<String, List<Map<String, String>>>> raporlar = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _verileriYukle();
-  }
-
-  void _verileriYukle() async {
-    final box = await Hive.openBox('bep_raporlari');
-    setState(() {
-      raporlar = box.values.cast<Map>().map((e) => Map<String, List<Map<String, String>>>.from(e)).toList();
-    });
+  Future<Box> _openBox(BuildContext context) async {
+    final currentId = context.read<CurrentStudent>().currentId;
+    final boxName = currentId != null ? 'bep_raporlari_$currentId' : 'bep_raporlari';
+    return Hive.openBox(boxName);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('BEP Raporları')),
-      body: ListView.builder(
-        itemCount: raporlar.length,
-        itemBuilder: (context, index) {
-          final rapor = raporlar[index];
-          return Card(
-            margin: const EdgeInsets.all(8),
-            child: ListTile(
-              title: Text("Rapor ${index + 1}"),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => BepRaporGoruntulemeSayfasi(raporVerileri: rapor),
-                  ),
-                );
-              },
-            ),
+    final currentId = context.watch<CurrentStudent>().currentId;
+
+    return FutureBuilder<Box>(
+      future: _openBox(context),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (!snap.hasData) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('BEP Raporları')),
+            body: const Center(child: Text('Kutu açılamadı')),
           );
-        },
-      ),
+        }
+        final box = snap.data!;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('BEP Raporları${currentId != null ? '  (Öğrenci: $currentId)' : ''}'),
+          ),
+          body: ValueListenableBuilder(
+            valueListenable: box.listenable(),
+            builder: (context, _, __) {
+              final entries = box.keys.map((k) => MapEntry(k, box.get(k))).toList()
+                ..sort((a, b) {
+                  final at = (a.value?['tarih'] ?? 0) as int;
+                  final bt = (b.value?['tarih'] ?? 0) as int;
+                  return bt.compareTo(at); // yeni üstte
+                });
+
+              if (entries.isEmpty) {
+                return const Center(child: Text('Kayıt bulunamadı'));
+              }
+
+              return ListView.separated(
+                itemCount: entries.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final e = entries[i];
+                  final m = (e.value as Map?) ?? {};
+                  final tarihStr = (m['tarihStr'] ?? '').toString();
+                  final ad = (m['ogrenciAd'] ?? '').toString();
+
+                  return ListTile(
+                    title: Text(tarihStr.isEmpty ? 'Tarihsiz Kayıt' : tarihStr),
+                    subtitle: Text(ad.isEmpty ? 'Öğrenci: -' : 'Öğrenci: $ad'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => BepRaporDetaySayfasi(rapor: Map<String, dynamic>.from(m)),
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

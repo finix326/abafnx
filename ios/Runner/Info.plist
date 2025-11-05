@@ -45,13 +45,5 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-
-	<!-- 💬 GEREKLİ İZİNLER -->
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Ses kaydı yapmak için mikrofon erişimine ihtiyaç vardır.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Resim seçmek için fotoğraf kütüphanesine erişim gereklidir.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Görüntü yakalamak için kamera erişimi gereklidir.</string>
 </dict>
 </plist>
