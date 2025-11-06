@@ -7,9 +7,28 @@ project 'Runner', {
   'Release' => :release,
 }
 
-# Flutter SDK'nın tam yolu (which flutter çıktından türetilmiş)
-flutter_root = '/Users/nidalsancak/development/flutter'
-load File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper.rb')
+# Flutter SDK yolunu dinamik olarak bul
+flutter_root = ENV['FLUTTER_ROOT']&.strip
+
+if flutter_root.nil? || flutter_root.empty?
+  flutter_exec = `which flutter`.strip
+
+  if flutter_exec.empty?
+    raise 'Flutter SDK bulunamadı. Lütfen FLUTTER_ROOT ortam değişkenini ayarlayın veya flutter komutunu PATH içerisine ekleyin.'
+  end
+
+  flutter_root = File.expand_path('..', File.dirname(File.realpath(flutter_exec)))
+end
+
+ENV['FLUTTER_ROOT'] = flutter_root
+
+podhelper = File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper.rb')
+
+unless File.exist?(podhelper)
+  raise "#{flutter_root} geçerli bir Flutter SDK dizini değil. Lütfen Flutter kurulumunuzu kontrol edin."
+end
+
+load podhelper
 
 # Firebase/Google pods ile uyum için static frameworks
 use_frameworks! :linkage => :static
@@ -25,6 +44,7 @@ post_install do |installer|
 
   # Modül başlık/Swift import sorunlarını önlemek için
   installer.pods_project.targets.each do |t|
+    flutter_additional_ios_build_settings(t)
     t.build_configurations.each do |config|
       config.build_settings['DEFINES_MODULE'] = 'YES'
       config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
