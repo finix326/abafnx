@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
@@ -20,30 +19,51 @@ class CizelgeDetaySayfasi extends StatefulWidget {
 }
 
 class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
-  Box? _box;
+  late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
+  Box<Map<dynamic, dynamic>>? _box;
   final PageController _pageController = PageController();
 
   final List<String> _icerik = [];
   final List<Color> _renkler = [];
+  bool _isLoaded = false;
+  bool _isLoading = false;
+  String? _ownerId;
 
-  Future<Box> _openBox(BuildContext context) async {
-    final currentId = context.read<CurrentStudent>().currentId;
-    final name =
-    (currentId != null && currentId.isNotEmpty) ? 'cizelge_kutusu_$currentId' : 'cizelge_kutusu';
-    return Hive.openBox(name);
+  @override
+  void initState() {
+    super.initState();
+    _boxFuture = Hive.openBox<Map<dynamic, dynamic>>('cizelge_kutusu');
   }
 
-  Future<void> _yukle(Box box) async {
-    final veri = box.get(widget.cizelgeAdi);
-    final list = (veri is Map) ? veri['icerik'] : null;
-    _icerik
-      ..clear()
-      ..addAll(List<String>.from(list ?? const []));
-    if (_icerik.isEmpty) _icerik.add('');
-    _renkler
-      ..clear()
-      ..addAll(List<Color>.generate(_icerik.length, (_) => Colors.white));
-    setState(() {});
+  Future<void> _yukle(Box<Map<dynamic, dynamic>> box) async {
+    if (!mounted) return;
+    final raw = box.get(widget.cizelgeAdi);
+    final map = (raw is Map)
+        ? Map<String, dynamic>.from(raw as Map<dynamic, dynamic>)
+        : <String, dynamic>{};
+    final list = List<String>.from(
+      ((map['icerik'] as List?) ?? const [])
+          .map((e) => e == null ? '' : e.toString()),
+    );
+    if (list.isEmpty) list.add('');
+
+    final ownerFromBox = (map['studentId'] as String?)?.trim();
+    final fallback = context.read<CurrentStudent>().currentId?.trim();
+    final owner =
+        (ownerFromBox != null && ownerFromBox.isNotEmpty) ? ownerFromBox : fallback;
+
+    if (!mounted) return;
+    setState(() {
+      _icerik
+        ..clear()
+        ..addAll(list);
+      _renkler
+        ..clear()
+        ..addAll(List<Color>.generate(_icerik.length, (_) => Colors.white));
+      _ownerId = owner;
+      _isLoaded = true;
+      _isLoading = false;
+    });
   }
 
   void _yeniKartEkle() {
@@ -54,15 +74,32 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
   }
 
   Future<void> _kaydet() async {
-    final box = _box;
-    if (box == null) return;
-    final eski = (box.get(widget.cizelgeAdi) as Map?) ?? {};
-    await box.put(widget.cizelgeAdi, {
+    final box = _box ?? await _boxFuture;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final eski = Map<String, dynamic>.from(
+      (box.get(widget.cizelgeAdi) as Map?)?.cast<dynamic, dynamic>() ??
+          const <String, dynamic>{},
+    );
+    final data = <String, dynamic>{
       ...eski,
       'tur': 'yazili',
-      'icerik': _icerik,
-      'updatedAt': DateTime.now().millisecondsSinceEpoch,
-    });
+      'icerik': List<String>.from(_icerik),
+      'updatedAt': now,
+    };
+    data['createdAt'] = (data['createdAt'] as int?) ?? now;
+
+    final fallbackOwner =
+        mounted ? context.read<CurrentStudent>().currentId?.trim() : null;
+    final owner = _ownerId?.trim() ?? fallbackOwner;
+    if (owner != null && owner.isNotEmpty) {
+      data['studentId'] = owner;
+      _ownerId = owner;
+    } else {
+      data.remove('studentId');
+      _ownerId = null;
+    }
+
+    await box.put(widget.cizelgeAdi, data);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('Kaydedildi')));
@@ -88,8 +125,8 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Box>(
-      future: _openBox(context),
+    return FutureBuilder<Box<Map<dynamic, dynamic>>>(
+      future: _boxFuture,
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -100,9 +137,21 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
             body: const Center(child: Text('Kutu açılamadı')),
           );
         }
-        if (_box == null) {
-          _box = snap.data!;
-          _yukle(_box!);
+        final box = snap.data!;
+        if (!identical(_box, box)) {
+          _box = box;
+          _isLoaded = false;
+        }
+
+        if (!_isLoaded && !_isLoading) {
+          _isLoading = true;
+          Future.microtask(() => _yukle(box));
+        }
+
+        if (!_isLoaded) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         return Scaffold(
