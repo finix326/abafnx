@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:hive/hive.dart';
+import 'package:provider/provider.dart';
+
+import 'app_state/current_student.dart';
+import 'data/finix_data_service.dart';
 
 class SiniflamaOyunuSayfasi extends StatefulWidget {
   const SiniflamaOyunuSayfasi({super.key});
@@ -120,17 +124,50 @@ class _SiniflamaOyunuSayfasiState extends State<SiniflamaOyunuSayfasi> {
                 label: const Text('Yeniden Başlat'),
               ),
               ElevatedButton.icon(
-                onPressed: () {
-                  // Hive veri kaydı burada yapılabilir
-                  var kutu = Hive.box('program_bilgileri');
-                  kutu.add({
+                onPressed: () async {
+                  final currentId = context.read<CurrentStudent>().currentId;
+                  if (currentId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Lütfen bir öğrenci seçin.')),
+                    );
+                    return;
+                  }
+
+                  final elapsedSeconds = kronometre.elapsed.inSeconds;
+                  final now = DateTime.now();
+                  final successRate =
+                      ((tasitlar.length + meslekler.length) / nesneler.length * 100);
+
+                  final box = await Hive.openBox('program_bilgileri_$currentId');
+                  await box.add({
+                    'studentId': currentId,
                     'programAdi': 'Sınıflama Oyunu',
-                    'tarih': DateTime.now().toIso8601String(),
-                    'sure': gecenSure,
+                    'tarih': now.millisecondsSinceEpoch,
+                    'tarihStr': now.toIso8601String(),
+                    'sureSaniye': elapsedSeconds,
                     'dogru': tasitlar.length + meslekler.length,
                     'toplam': nesneler.length,
-                    'basari': ((tasitlar.length + meslekler.length) / nesneler.length * 100).toStringAsFixed(2),
+                    'basariYuzdesi': double.parse(successRate.toStringAsFixed(2)),
                   });
+
+                  final service = FinixDataService.instance;
+                  final recordId = 'classification_${now.millisecondsSinceEpoch}';
+                  await service.upsert(
+                    service.buildRecord(
+                      studentId: currentId,
+                      module: 'classification_game',
+                      entityId: recordId,
+                      title: 'Sınıflama Oyunu',
+                      createdAt: now.millisecondsSinceEpoch,
+                      payload: {
+                        'durationSeconds': elapsedSeconds,
+                        'correct': tasitlar.length + meslekler.length,
+                        'total': nesneler.length,
+                        'successRate': double.parse(successRate.toStringAsFixed(2)),
+                      },
+                    ),
+                  );
+
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Oyun tamamlandı')),
                   );

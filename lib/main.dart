@@ -7,8 +7,12 @@ import 'ai/ai_engine.dart';
 // STATE
 import 'app_state/current_student.dart';
 
+// DATA
+import 'data/finix_data_service.dart';
+
 // MODEL
 import 'student.dart';
+import 'kart_model.dart';
 
 // WIDGETS
 import 'widgets/student_picker_sheet.dart';
@@ -41,10 +45,6 @@ import 'hafiza_oyunu_listesi_sayfasi.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 🔹 Yapay zekâ motorunu başlat (Gemini)
-  // DÜZELTİLDİ: Fonksiyon çağrısı syntax hatası giderildi.
-  AIEngine.init('AIzaSyBpZFzWz5cdTaGiM07Chb1G_-fUUGOSYWQ'); // TODO: Burayı kendi Gemini API anahtarınla değiştir
-
   final appDocDir = await getApplicationDocumentsDirectory();
   await Hive.initFlutter(appDocDir.path);
 
@@ -63,13 +63,26 @@ Future<void> main() async {
 
   await Hive.openBox('hafiza_oyunlari');
 
+  // Ortak Finix kayıt kutusu
+  await FinixDataService.instance.init();
+
   // Öğrenciler
   if (!Hive.isAdapterRegistered(100)) {
     Hive.registerAdapter(StudentAdapter());
   }
+  if (!Hive.isAdapterRegistered(15)) {
+    Hive.registerAdapter(KartModelAdapter());
+  }
   await Hive.openBox<Student>('students');
 
   await Hive.openBox('auth');
+
+  // 🔹 Yapay zekâ motorunu başlat (Gemini)
+  // TODO: Burayı kendi Gemini API anahtarınla değiştir.
+  AIEngine.init(
+    apiKey: 'AIzaSyBpZFzWz5cdTaGiM07Chb1G_-fUUGOSYWQ',
+    dataService: FinixDataService.instance,
+  );
 
   final current = CurrentStudent();
   await current.load();

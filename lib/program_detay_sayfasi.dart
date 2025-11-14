@@ -3,6 +3,8 @@ import 'package:hive/hive.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 
+import 'ai/ai_engine.dart';
+
 import 'app_state/current_student.dart';
 
 /// Bu sayfa, aktif öğrencinin 'program_bilgileri_<studentId>' kutusundan
@@ -59,8 +61,33 @@ class ProgramDetaySayfasi extends StatelessWidget {
             .where((e) => e is Map)
             .cast<Map>()
             .where((m) => (m['programAdi'] ?? '') == 'Eşleştirme Oyunu')
+            .where((m) {
+              final sid = (m['studentId'] ?? '').toString();
+              return sid.isEmpty || sid == currentId;
+            })
+            .map((m) => Map<dynamic, dynamic>.from(m))
             .toList()
-          ..sort((a, b) => ((a['tarih'] ?? 0) as int).compareTo((b['tarih'] ?? 0) as int));
+          ..sort((a, b) {
+            final aTime = a['tarih'] is int
+                ? a['tarih'] as int
+                : int.tryParse('${a['tarih'] ?? ''}') ??
+                    (a['tarih'] is String
+                        ? DateTime.tryParse(a['tarih'] as String)
+                                ?.millisecondsSinceEpoch ??
+                            0
+                        : 0);
+            final bTime = b['tarih'] is int
+                ? b['tarih'] as int
+                : int.tryParse('${b['tarih'] ?? ''}') ??
+                    (b['tarih'] is String
+                        ? DateTime.tryParse(b['tarih'] as String)
+                                ?.millisecondsSinceEpoch ??
+                            0
+                        : 0);
+            a['tarih'] = aTime;
+            b['tarih'] = bTime;
+            return aTime.compareTo(bTime);
+          });
 
         final pointsYuzde = <FlSpot>[];
         final pointsSure = <FlSpot>[];
@@ -80,13 +107,31 @@ class ProgramDetaySayfasi extends StatelessWidget {
         }
 
         return Scaffold(
-          appBar: AppBar(title: const Text('Program Detay')),
+          appBar: AppBar(
+            title: const Text('Program Detay'),
+            actions: [
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                ),
+                onPressed: () => _runAiAnalysis(context, currentId),
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: const Text('AI Analiz'),
+              ),
+            ],
+          ),
           body: Padding(
             padding: const EdgeInsets.all(16),
             child: raw.isEmpty
                 ? const Center(child: Text('Henüz kayıt yok'))
                 : ListView(
               children: [
+                FilledButton.icon(
+                  onPressed: () => _runAiAnalysis(context, currentId),
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('AI Analiz'),
+                ),
+                const SizedBox(height: 16),
                 _StatOzet(raw: raw),
                 const SizedBox(height: 16),
                 Text('Başarı Yüzdesi (%)', style: Theme.of(context).textTheme.titleMedium),
@@ -115,6 +160,34 @@ class ProgramDetaySayfasi extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _runAiAnalysis(BuildContext context, String studentId) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final result = await AIEngine.analyzeStudent(studentId);
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop();
+
+    if (!context.mounted) return;
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('AI Analiz'),
+        content: SingleChildScrollView(child: Text(result)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Kapat'),
+          ),
+        ],
+      ),
     );
   }
 

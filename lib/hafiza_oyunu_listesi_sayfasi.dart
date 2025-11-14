@@ -1,10 +1,18 @@
 // lib/hafiza_oyunu_listesi_sayfasi.dart
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 
+import 'ai/ai_prompt_sheet.dart';
+import 'app_state/current_student.dart';
+import 'data/finix_data_service.dart';
 import 'hafiza_oyunu_model.dart';
 import 'hafiza_oyunu_detay_sayfasi.dart';
+
+const String _memoryModule = 'memory_game';
 
 class HafizaOyunuListesiSayfasi extends StatefulWidget {
   const HafizaOyunuListesiSayfasi({super.key});
@@ -17,6 +25,7 @@ class HafizaOyunuListesiSayfasi extends StatefulWidget {
 class _HafizaOyunuListesiSayfasiState
     extends State<HafizaOyunuListesiSayfasi> {
   late final Box _box;
+  final FinixDataService _dataService = FinixDataService.instance;
 
   @override
   void initState() {
@@ -25,6 +34,14 @@ class _HafizaOyunuListesiSayfasiState
   }
 
   Future<void> _yeniOyunOlustur() async {
+    final currentId = context.read<CurrentStudent>().currentId;
+    if (currentId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lütfen önce bir öğrenci seçin.')),
+      );
+      return;
+    }
+
     int pairCount = 3; // varsayılan 3 çift (6 kart)
     final titleController = TextEditingController(text: 'Yeni Hafıza Oyunu');
 
@@ -88,20 +105,125 @@ class _HafizaOyunuListesiSayfasiState
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = now.toString();
+    final title = result['title'].isEmpty
+        ? 'Yeni Hafıza Oyunu'
+        : result['title'] as String;
+    final selectedPairCount = result['pairCount'] as int;
 
     final oyun = HafizaOyunu(
       id: id,
-      title: result['title'].isEmpty
-          ? 'Yeni Hafıza Oyunu'
-          : result['title'] as String,
-      pairCount: result['pairCount'] as int,
-      imagePaths: <String>[],
+      studentId: currentId,
+      title: title,
+      pairCount: selectedPairCount,
+      imagePaths: List<String>.filled(selectedPairCount, ''),
       createdAt: now,
     );
 
     await _box.put(id, oyun.toMap());
 
+    final record = _dataService.buildRecord(
+      studentId: currentId,
+      module: _memoryModule,
+      entityId: id,
+      title: title,
+      createdAt: now,
+      payload: {
+        'pairCount': selectedPairCount,
+        'source': 'manual',
+      },
+    );
+    await _dataService.upsert(record);
+
     if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HafizaOyunuDetaySayfasi(oyunId: id),
+      ),
+    );
+  }
+
+  List<String> _parseAiSuggestions(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return const [];
+
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is List) {
+        return decoded
+            .map((e) => e is Map
+                ? (e['title'] ?? e['label'] ?? e['value'] ?? '').toString()
+                : e.toString())
+            .map((e) => e.trim())
+            .where((element) => element.isNotEmpty)
+            .toList();
+      }
+    } catch (_) {
+      // JSON parse edilemezse manuel devam edeceğiz.
+    }
+
+    return trimmed
+        .split(RegExp(r'[\n,;]+'))
+        .map((e) => e.trim())
+        .where((element) => element.isNotEmpty)
+        .toList();
+  }
+
+  Future<void> _yeniOyunOlusturAI(String aiResponse) async {
+    final currentId = context.read<CurrentStudent>().currentId;
+    if (currentId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lütfen önce bir öğrenci seçin.')),
+      );
+      return;
+    }
+
+    final suggestions = _parseAiSuggestions(aiResponse);
+    int pairCount = suggestions.isNotEmpty ? suggestions.length : 3;
+    pairCount = pairCount.clamp(2, 10).toInt(); // çok büyük değerleri sınırlayalım
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = now.toString();
+    final title = 'AI Hafıza Oyunu';
+
+    final oyun = HafizaOyunu(
+      id: id,
+      studentId: currentId,
+      title: title,
+      pairCount: pairCount,
+      imagePaths: List<String>.filled(pairCount, ''),
+      createdAt: now,
+    );
+
+    await _box.put(id, oyun.toMap());
+
+    final payload = {
+      'pairCount': pairCount,
+      'source': 'ai',
+      if (suggestions.isNotEmpty) 'suggestions': suggestions,
+    };
+    final record = _dataService.buildRecord(
+      studentId: currentId,
+      module: _memoryModule,
+      entityId: id,
+      title: title,
+      createdAt: now,
+      payload: payload,
+    );
+    await _dataService.upsert(record);
+
+    if (!mounted) return;
+
+    if (suggestions.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${suggestions.length} öneri hazırlandı. Kartlara görseller ekleyebilirsiniz.',
+          ),
+        ),
+      );
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -114,6 +236,9 @@ class _HafizaOyunuListesiSayfasiState
     final raw = (_box.get(id) as Map?) ?? {};
     final oyun = HafizaOyunu.fromMap(id, raw);
     final controller = TextEditingController(text: oyun.title);
+    final studentId = oyun.studentId.isNotEmpty
+        ? oyun.studentId
+        : context.read<CurrentStudent>().currentId;
 
     final newTitle = await showDialog<String?>(
       context: context,
@@ -142,113 +267,191 @@ class _HafizaOyunuListesiSayfasiState
     );
 
     if (newTitle == null) return;
-    oyun.title = newTitle.isEmpty ? oyun.title : newTitle;
+    final trimmed = newTitle.trim();
+    if (trimmed.isEmpty) return;
+    oyun.title = trimmed;
     await _box.put(id, oyun.toMap());
+
+    if (studentId != null && studentId.isNotEmpty) {
+      final existing = _dataService.get(
+        studentId: studentId,
+        module: _memoryModule,
+        entityId: id,
+      );
+      final payload = Map<String, dynamic>.from(existing?.payload ?? {});
+      payload['pairCount'] = oyun.pairCount;
+      payload.putIfAbsent('source', () => 'manual');
+
+      final record = existing ??
+          _dataService.buildRecord(
+            studentId: studentId,
+            module: _memoryModule,
+            entityId: id,
+            title: oyun.title,
+            createdAt: oyun.createdAt,
+            payload: payload,
+          );
+
+      await _dataService.upsert(
+        record.copyWith(
+          title: oyun.title,
+          payload: payload,
+        ),
+      );
+    }
   }
 
   Future<void> _oyunSil(String id) async {
+    final raw = (_box.get(id) as Map?) ?? {};
+    final oyun = HafizaOyunu.fromMap(id, raw);
+
     // Şimdilik sadece kaydı siliyoruz, görselleri fiziksel olarak silmek
     // istersen ileride buraya ekleyebiliriz.
     await _box.delete(id);
+
+    final targetStudentId = oyun.studentId.isNotEmpty
+        ? oyun.studentId
+        : context.read<CurrentStudent>().currentId;
+    if (targetStudentId != null && targetStudentId.isNotEmpty) {
+      await _dataService.delete(
+        studentId: targetStudentId,
+        module: _memoryModule,
+        entityId: id,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final currentId = context.watch<CurrentStudent>().currentId;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Hafıza Oyunları'),
       ),
-      body: ValueListenableBuilder<Box>(
-        valueListenable: _box.listenable(),
-        builder: (context, box, _) {
-          final keys = box.keys.toList()
-            ..sort((a, b) => b.toString().compareTo(a.toString()));
-          if (keys.isEmpty) {
-            return const Center(
-              child: Text('Henüz hafıza oyunu yok.\nSağ alttan yeni oluştur.'),
-            );
-          }
+      body: currentId == null
+          ? const Center(child: Text('Lütfen bir öğrenci seçin.'))
+          : ValueListenableBuilder<Box>(
+              valueListenable: _box.listenable(),
+              builder: (context, box, _) {
+                final entries = box.keys
+                    .map((key) => MapEntry(key, box.get(key)))
+                    .where((entry) => entry.value is Map)
+                    .map((entry) => MapEntry(
+                          entry.key.toString(),
+                          HafizaOyunu.fromMap(
+                              entry.key.toString(), entry.value as Map),
+                        ))
+                    .where((entry) =>
+                        entry.value.studentId.isEmpty ||
+                        entry.value.studentId == currentId)
+                    .toList()
+                  ..sort((a, b) =>
+                      b.value.createdAt.compareTo(a.value.createdAt));
 
-          return ListView.builder(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            itemCount: keys.length,
-            itemBuilder: (context, index) {
-              final key = keys[index];
-              final raw = (box.get(key) as Map?) ?? {};
-              final oyun = HafizaOyunu.fromMap(key.toString(), raw);
-              final totalCards = oyun.pairCount * 2;
+                if (entries.isEmpty) {
+                  return const Center(
+                    child:
+                        Text('Henüz hafıza oyunu yok.\nSağ alttan yeni oluştur.'),
+                  );
+                }
 
-              final dt =
-              DateTime.fromMillisecondsSinceEpoch(oyun.createdAt);
-              final dateStr =
-                  '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+                return ListView.builder(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final oyun = entries[index].value;
+                    final totalCards = oyun.pairCount * 2;
 
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.grid_view),
-                  ),
-                  title: Text(
-                    oyun.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle:
-                  Text('$dateStr · ${oyun.pairCount} çift ($totalCards kart)'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            HafizaOyunuDetaySayfasi(oyunId: oyun.id),
+                    final dt =
+                        DateTime.fromMillisecondsSinceEpoch(oyun.createdAt);
+                    final dateStr =
+                        '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    );
-                  },
-                  onLongPress: () async {
-                    final act = await showModalBottomSheet<String>(
-                      context: context,
-                      builder: (_) => SafeArea(
-                        child: Wrap(
-                          children: [
-                            ListTile(
-                              leading: const Icon(Icons.edit),
-                              title: const Text('Oyun adını düzenle'),
-                              onTap: () =>
-                                  Navigator.pop(context, 'rename'),
-                            ),
-                            ListTile(
-                              leading: const Icon(Icons.delete_outline,
-                                  color: Colors.red),
-                              title: const Text('Oyun sil'),
-                              onTap: () =>
-                                  Navigator.pop(context, 'delete'),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          child: Icon(Icons.grid_view),
                         ),
+                        title: Text(
+                          oyun.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                            '$dateStr · ${oyun.pairCount} çift ($totalCards kart)'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  HafizaOyunuDetaySayfasi(oyunId: oyun.id),
+                            ),
+                          );
+                        },
+                        onLongPress: () async {
+                          final act = await showModalBottomSheet<String>(
+                            context: context,
+                            builder: (_) => SafeArea(
+                              child: Wrap(
+                                children: [
+                                  ListTile(
+                                    leading: const Icon(Icons.edit),
+                                    title: const Text('Oyun adını düzenle'),
+                                    onTap: () =>
+                                        Navigator.pop(context, 'rename'),
+                                  ),
+                                  ListTile(
+                                    leading: const Icon(Icons.delete_outline,
+                                        color: Colors.red),
+                                    title: const Text('Oyun sil'),
+                                    onTap: () =>
+                                        Navigator.pop(context, 'delete'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
+                              ),
+                            ),
+                          );
+                          if (act == 'rename') {
+                            await _oyunYenidenAdlandir(oyun.id);
+                          } else if (act == 'delete') {
+                            await _oyunSil(oyun.id);
+                          }
+                        },
                       ),
                     );
-                    if (act == 'rename') {
-                      await _oyunYenidenAdlandir(oyun.id);
-                    } else if (act == 'delete') {
-                      await _oyunSil(oyun.id);
-                    }
                   },
-                ),
+                );
+              },
+            ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'hafiza_ai',
+            onPressed: () {
+              showAIPromptSheet(
+                context: context,
+                onCompleted: _yeniOyunOlusturAI,
               );
             },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _yeniOyunOlustur,
-        child: const Icon(Icons.add),
+            child: const Icon(Icons.auto_awesome),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'hafiza_manual',
+            onPressed: _yeniOyunOlustur,
+            child: const Icon(Icons.add),
+          ),
+        ],
       ),
     );
   }

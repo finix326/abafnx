@@ -9,6 +9,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'data/finix_data_service.dart';
 import 'hafiza_oyunu_model.dart';
 
 class HafizaOyunuDetaySayfasi extends StatefulWidget {
@@ -23,6 +24,8 @@ class HafizaOyunuDetaySayfasi extends StatefulWidget {
 class _HafizaOyunuDetaySayfasiState extends State<HafizaOyunuDetaySayfasi>
     with TickerProviderStateMixin { // Animasyon için TickerProvider eklendi
   late final Box _box;
+  final FinixDataService _dataService = FinixDataService.instance;
+  static const String _memoryModule = 'memory_game';
   HafizaOyunu? _oyun;
   bool _hazirMod = true;
 
@@ -71,8 +74,39 @@ class _HafizaOyunuDetaySayfasiState extends State<HafizaOyunuDetaySayfasi>
   }
 
   Future<void> _saveGame() async {
-    if (_oyun == null) return;
-    await _box.put(_oyun!.id, _oyun!.toMap());
+    final oyun = _oyun;
+    if (oyun == null) return;
+    await _box.put(oyun.id, oyun.toMap());
+
+    if (oyun.studentId.isEmpty) return;
+
+    final existing = _dataService.get(
+      studentId: oyun.studentId,
+      module: _memoryModule,
+      entityId: oyun.id,
+    );
+    final payload = Map<String, dynamic>.from(existing?.payload ?? {});
+    payload['pairCount'] = oyun.pairCount;
+    payload['imageCount'] =
+        oyun.imagePaths.where((path) => path.isNotEmpty).length;
+    payload.putIfAbsent('source', () => 'manual');
+
+    final record = existing ??
+        _dataService.buildRecord(
+          studentId: oyun.studentId,
+          module: _memoryModule,
+          entityId: oyun.id,
+          title: oyun.title,
+          createdAt: oyun.createdAt,
+          payload: payload,
+        );
+
+    await _dataService.upsert(
+      record.copyWith(
+        title: oyun.title,
+        payload: payload,
+      ),
+    );
   }
 
   Future<void> _pickImageForIndex(int index) async {
