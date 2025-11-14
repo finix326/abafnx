@@ -18,87 +18,102 @@ class HafizaOyunuListesiSayfasi extends StatefulWidget {
 
 class _HafizaOyunuListesiSayfasiState
     extends State<HafizaOyunuListesiSayfasi> {
-  late final Future<Box> _boxFuture;
+  late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
 
   @override
   void initState() {
     super.initState();
-    _boxFuture = Hive.openBox('hafiza_oyunlari');
+    _boxFuture = Hive.openBox<Map<dynamic, dynamic>>('hafiza_oyunlari');
   }
 
-  Future<Box> _getBox() => _boxFuture;
+  Future<Box<Map<dynamic, dynamic>>> _getBox() => _boxFuture;
 
   Future<void> _yeniOyunOlustur() async {
-    int pairCount = 3; // varsayılan 3 çift (6 kart)
     final titleController = TextEditingController(text: 'Yeni Hafıza Oyunu');
-
-    final result = await showDialog<Map<String, dynamic>?>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Yeni Hafıza Oyunu'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(
-                labelText: 'Oyun adı',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Text('Kaç çift olsun?'),
-                const SizedBox(width: 8),
-                DropdownButton<int>(
-                  value: pairCount,
-                  items: const [
-                    DropdownMenuItem(value: 2, child: Text('2 çift (4 kart)')),
-                    DropdownMenuItem(value: 3, child: Text('3 çift (6 kart)')),
-                    DropdownMenuItem(value: 4, child: Text('4 çift (8 kart)')),
-                    DropdownMenuItem(value: 5, child: Text('5 çift (10 kart)')),
-                    DropdownMenuItem(value: 6, child: Text('6 çift (12 kart)')),
+    Map<String, dynamic>? result;
+    try {
+      result = await showDialog<Map<String, dynamic>?>(
+        context: context,
+        builder: (_) {
+          int pairCount = 3; // varsayılan 3 çift (6 kart)
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Yeni Hafıza Oyunu'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(
+                        labelText: 'Oyun adı',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Text('Kaç çift olsun?'),
+                        const SizedBox(width: 8),
+                        DropdownButton<int>(
+                          value: pairCount,
+                          items: const [
+                            DropdownMenuItem(
+                                value: 2, child: Text('2 çift (4 kart)')),
+                            DropdownMenuItem(
+                                value: 3, child: Text('3 çift (6 kart)')),
+                            DropdownMenuItem(
+                                value: 4, child: Text('4 çift (8 kart)')),
+                            DropdownMenuItem(
+                                value: 5, child: Text('5 çift (10 kart)')),
+                            DropdownMenuItem(
+                                value: 6, child: Text('6 çift (12 kart)')),
+                          ],
+                          onChanged: (val) {
+                            if (val == null) return;
+                            setState(() {
+                              pairCount = val;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
                   ],
-                  onChanged: (val) {
-                    if (val == null) return;
-                    pairCount = val;
-                    (context as Element).markNeedsBuild();
-                  },
                 ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, null),
-            child: const Text('İptal'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context, {
-                'title': titleController.text.trim(),
-                'pairCount': pairCount,
-              });
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, null),
+                    child: const Text('İptal'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(context, {
+                        'title': titleController.text.trim(),
+                        'pairCount': pairCount,
+                      });
+                    },
+                    child: const Text('Oluştur'),
+                  ),
+                ],
+              );
             },
-            child: const Text('Oluştur'),
-          ),
-        ],
-      ),
-    );
+          );
+        },
+      );
+    } finally {
+      titleController.dispose();
+    }
 
     if (result == null) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = now.toString();
 
+    final rawTitle = (result['title'] as String?)?.trim() ?? '';
     final oyun = HafizaOyunu(
       id: id,
-      title: result['title'].isEmpty
-          ? 'Yeni Hafıza Oyunu'
-          : result['title'] as String,
-      pairCount: result['pairCount'] as int,
+      title: rawTitle.isEmpty ? 'Yeni Hafıza Oyunu' : rawTitle,
+      pairCount: (result['pairCount'] as int?) ?? 3,
       imagePaths: <String>[],
       createdAt: now,
     );
@@ -125,7 +140,7 @@ class _HafizaOyunuListesiSayfasiState
 
   Future<void> _oyunYenidenAdlandir(String id) async {
     final box = await _getBox();
-    final raw = (box.get(id) as Map?) ?? {};
+    final raw = Map<String, dynamic>.from((box.get(id) as Map?) ?? {});
     final oyun = HafizaOyunu.fromMap(id, raw);
     final controller = TextEditingController(text: oyun.title);
 
@@ -195,15 +210,16 @@ class _HafizaOyunuListesiSayfasiState
 
           final box = snapshot.data!;
 
-          return ValueListenableBuilder<Box>(
+          return ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
             valueListenable: box.listenable(),
             builder: (context, _, __) {
-              final items = <MapEntry<dynamic, Map<dynamic, dynamic>>>[];
+              final oyunlar = <HafizaOyunu>[];
 
               for (final key in box.keys) {
                 final raw = box.get(key);
                 if (raw is! Map) continue;
-                final ownerId = (raw['studentId'] as String?)?.trim();
+                final normalized = Map<String, dynamic>.from(raw);
+                final ownerId = (normalized['studentId'] as String?)?.trim();
 
                 final matchesStudent = (currentStudentId == null ||
                         currentStudentId.isEmpty)
@@ -212,16 +228,15 @@ class _HafizaOyunuListesiSayfasiState
 
                 if (!matchesStudent) continue;
 
-                items.add(MapEntry(key, Map<dynamic, dynamic>.from(raw)));
+                final id = key.toString();
+                oyunlar.add(HafizaOyunu.fromMap(id, normalized));
               }
 
-              items.sort((a, b) {
-                final aCreated = (a.value['createdAt'] as int?) ?? 0;
-                final bCreated = (b.value['createdAt'] as int?) ?? 0;
-                return bCreated.compareTo(aCreated);
-              });
+              oyunlar.sort(
+                (a, b) => b.createdAt.compareTo(a.createdAt),
+              );
 
-              if (items.isEmpty) {
+              if (oyunlar.isEmpty) {
                 final emptyText = (currentStudentId == null ||
                         currentStudentId.isEmpty)
                     ? 'Henüz hafıza oyunu yok.\nSağ alttan yeni oluştur.'
@@ -235,12 +250,9 @@ class _HafizaOyunuListesiSayfasiState
               return ListView.builder(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                itemCount: items.length,
+                itemCount: oyunlar.length,
                 itemBuilder: (context, index) {
-                  final entry = items[index];
-                  final key = entry.key.toString();
-                  final raw = entry.value;
-                  final oyun = HafizaOyunu.fromMap(key, raw);
+                  final oyun = oyunlar[index];
                   final totalCards = oyun.pairCount * 2;
 
                   final dt =
