@@ -334,20 +334,29 @@ class _HafizaOyunuListesiSayfasiState
           : ValueListenableBuilder<Box>(
               valueListenable: _box.listenable(),
               builder: (context, box, _) {
-                final entries = box.keys
-                    .map((key) => MapEntry(key, box.get(key)))
-                    .where((entry) => entry.value is Map)
-                    .map((entry) => MapEntry(
-                          entry.key.toString(),
-                          HafizaOyunu.fromMap(
-                              entry.key.toString(), entry.value as Map),
-                        ))
-                    .where((entry) =>
-                        entry.value.studentId.isEmpty ||
-                        entry.value.studentId == currentId)
-                    .toList()
-                  ..sort((a, b) =>
-                      b.value.createdAt.compareTo(a.value.createdAt));
+                final entries = <MapEntry<String, HafizaOyunu>>[];
+                for (final key in box.keys) {
+                  final value = box.get(key);
+                  if (value is! Map) continue;
+                  var oyun = HafizaOyunu.fromMap(key.toString(), value);
+                  if (oyun.studentId.isEmpty) {
+                    oyun = HafizaOyunu(
+                      id: oyun.id,
+                      studentId: currentId,
+                      title: oyun.title,
+                      pairCount: oyun.pairCount,
+                      imagePaths: List<String>.from(oyun.imagePaths),
+                      createdAt: oyun.createdAt,
+                    );
+                    box.put(key, oyun.toMap());
+                  }
+                  if (oyun.studentId == currentId) {
+                    entries.add(MapEntry(key.toString(), oyun));
+                  }
+                }
+                entries.sort(
+                  (a, b) => b.value.createdAt.compareTo(a.value.createdAt),
+                );
 
                 if (entries.isEmpty) {
                   return const Center(

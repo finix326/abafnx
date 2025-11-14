@@ -5,6 +5,9 @@ import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
+
+import 'app_state/current_student.dart';
 
 class CizelgeDetayResimliSesliSayfasi extends StatefulWidget {
   final String cizelgeAdi;
@@ -21,7 +24,10 @@ class CizelgeDetayResimliSesliSayfasi extends StatefulWidget {
 
 class _CizelgeDetayResimliSesliSayfasiState
     extends State<CizelgeDetayResimliSesliSayfasi> {
-  final Box _box = Hive.box('cizelge_kutusu');
+  Box? _box;
+  bool _isLoading = true;
+  String? _errorMessage;
+  String? _studentId;
 
   // Her kart: {'resimPath': String?, 'sesPath': String?, 'metin': String}
   final List<Map<String, dynamic>> _icerik = [];
@@ -46,31 +52,59 @@ class _CizelgeDetayResimliSesliSayfasiState
   }
 
   Future<void> _init() async {
-    await _player.openPlayer();
-    await _recorder.openRecorder();
+    try {
+      await _player.openPlayer();
+      await _recorder.openRecorder();
 
-    _cizelgeDir = await _ensureCizelgeDir();
-    final data = _box.get(widget.cizelgeAdi) as Map?;
-    final list = (data != null && data['icerik'] is List) ? data['icerik'] as List : [];
-
-    if (list.isEmpty) {
-      _icerik.add({'resimPath': null, 'sesPath': null, 'metin': ''});
-    } else {
-      for (final e in list) {
-        final m = Map<String, dynamic>.from(e as Map);
-        // Kayıp dosyaları temizle
-        final rp = (m['resimPath'] as String?);
-        if (rp != null && rp.isNotEmpty && !File(rp).existsSync()) m['resimPath'] = null;
-        final sp = (m['sesPath'] as String?);
-        if (sp != null && sp.isNotEmpty && !File(sp).existsSync()) m['sesPath'] = null;
-        _icerik.add({
-          'resimPath': m['resimPath'],
-          'sesPath': m['sesPath'],
-          'metin': (m['metin'] ?? '').toString(),
+      final currentId = context.read<CurrentStudent>().currentId;
+      if (currentId == null || currentId.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _errorMessage = 'Lütfen önce bir öğrenci seçin.';
+          _isLoading = false;
         });
+        return;
       }
+      _studentId = currentId;
+      _box = await Hive.openBox('cizelge_kutusu_$currentId');
+
+      _cizelgeDir = await _ensureCizelgeDir();
+      final data = _box!.get(widget.cizelgeAdi) as Map?;
+      final list =
+          (data != null && data['icerik'] is List) ? data['icerik'] as List : [];
+
+      _icerik.clear();
+      if (list.isEmpty) {
+        _icerik.add({'resimPath': null, 'sesPath': null, 'metin': ''});
+      } else {
+        for (final e in list) {
+          final m = Map<String, dynamic>.from(e as Map);
+          final rp = (m['resimPath'] as String?);
+          if (rp != null && rp.isNotEmpty && !File(rp).existsSync()) {
+            m['resimPath'] = null;
+          }
+          final sp = (m['sesPath'] as String?);
+          if (sp != null && sp.isNotEmpty && !File(sp).existsSync()) {
+            m['sesPath'] = null;
+          }
+          _icerik.add({
+            'resimPath': m['resimPath'],
+            'sesPath': m['sesPath'],
+            'metin': (m['metin'] ?? '').toString(),
+          });
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
     }
-    setState(() {});
   }
 
   @override
@@ -85,7 +119,8 @@ class _CizelgeDetayResimliSesliSayfasiState
   Future<Directory> _ensureCizelgeDir() async {
     final base = await getApplicationDocumentsDirectory();
     final safeName = widget.cizelgeAdi.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
-    final dir = Directory('${base.path}/cizelgeler/$safeName');
+    final prefix = _studentId != null ? '${_studentId!}_' : '';
+    final dir = Directory('${base.path}/cizelgeler/$prefix$safeName');
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
     }
@@ -98,9 +133,13 @@ class _CizelgeDetayResimliSesliSayfasiState
   }
 
   Future<void> _saveSilent() async {
-    await _box.put(widget.cizelgeAdi, {
+    final box = _box;
+    if (box == null || _studentId == null) return;
+    await box.put(widget.cizelgeAdi, {
       'tur': 'resimli_sesli',
       'icerik': _icerik,
+      'studentId': _studentId,
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
     });
   }
 
@@ -418,6 +457,19 @@ class _CizelgeDetayResimliSesliSayfasiState
   // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.cizelgeAdi)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_errorMessage != null) {
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.cizelgeAdi)),
+        body: Center(child: Text(_errorMessage!)),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Çizelge: ${widget.cizelgeAdi}'),

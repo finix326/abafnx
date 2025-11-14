@@ -262,8 +262,24 @@ class _TerapistDrawer extends StatelessWidget {
             leading: const Icon(Icons.add_task),
             title: const Text('Çizelge Ekle'),
             onTap: () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const CizelgeEkleSayfasi(tur: 'Genel')));
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              final studentId = context.read<CurrentStudent>().currentId;
+              navigator.pop();
+              if (studentId == null) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Lütfen önce bir öğrenci seçin.')),
+                );
+                return;
+              }
+              navigator.push(
+                MaterialPageRoute(
+                  builder: (_) => CizelgeEkleSayfasi(
+                    tur: 'Genel',
+                    studentId: studentId,
+                  ),
+                ),
+              );
             },
           ),
           const Divider(height: 1),

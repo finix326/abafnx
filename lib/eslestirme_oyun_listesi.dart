@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -57,12 +58,40 @@ class _EslestirmeOyunListesiPageState extends State<EslestirmeOyunListesiPage> {
       }
     }
 
+    final detailUpdates = <int, Map<String, dynamic>>{};
+    bool needsWriteBack = false;
+
+    if (currentStudentId != null) {
+      for (final game in list) {
+        final sid = (game['studentId'] ?? '').toString();
+        if (sid.isEmpty) {
+          game['studentId'] = currentStudentId;
+          needsWriteBack = true;
+          final detailKey = 'game_${game['id']}';
+          final detailRaw = _box.get(detailKey);
+          if (detailRaw is Map) {
+            final detail = Map<String, dynamic>.from(_asStrMap(detailRaw));
+            detail['studentId'] = currentStudentId;
+            detailUpdates[game['id'] as int] = detail;
+          }
+        }
+      }
+      if (needsWriteBack) {
+        Future.microtask(() async {
+          await _box.put('_games', list);
+          for (final entry in detailUpdates.entries) {
+            await _box.put('game_${entry.key}', entry.value);
+          }
+        });
+      }
+    }
+
     final filtered = currentStudentId == null
         ? list
         : list
             .where((game) {
               final sid = (game['studentId'] ?? '').toString();
-              return sid.isEmpty || sid == currentStudentId;
+              return sid == currentStudentId;
             })
             .toList();
 

@@ -5,8 +5,13 @@ import 'cizelge_detay_resimli_sesli_sayfasi.dart';
 
 class CizelgeEkleSayfasi extends StatefulWidget {
   final String tur;
+  final String studentId;
 
-  const CizelgeEkleSayfasi({super.key, required this.tur});
+  const CizelgeEkleSayfasi({
+    super.key,
+    required this.tur,
+    required this.studentId,
+  });
 
   @override
   State<CizelgeEkleSayfasi> createState() => _CizelgeEkleSayfasiState();
@@ -14,7 +19,17 @@ class CizelgeEkleSayfasi extends StatefulWidget {
 
 class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
   final TextEditingController _controller = TextEditingController();
-  final Box _box = Hive.box('cizelge_kutusu');
+  Box? _box;
+  late final Future<Box> _boxFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _boxFuture = Hive.openBox('cizelge_kutusu_${widget.studentId}').then((value) {
+      _box = value;
+      return value;
+    });
+  }
 
   void _kaydet() {
     final ad = _controller.text.trim();
@@ -22,7 +37,18 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
       // 🔧 Türü yalnızca "yazili" ya da "resimli_sesli" olarak kaydet
       final kaydedilecekTur = widget.tur == 'yazili' ? 'yazili' : 'resimli_sesli';
 
-      _box.put(ad, {'tur': kaydedilecekTur, 'icerik': []});
+      final box = _box;
+      if (box == null) {
+        _boxFuture.whenComplete(() => _kaydet());
+        return;
+      }
+
+      box.put(ad, {
+        'tur': kaydedilecekTur,
+        'icerik': [],
+        'studentId': widget.studentId,
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+      });
 
       Widget hedefSayfa;
       if (kaydedilecekTur == 'yazili') {

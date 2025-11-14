@@ -11,11 +11,6 @@ import 'cizelge_detay_resimli_sesli_sayfasi.dart';
 import 'cizelge_ekle_sayfasi.dart';
 
 /// Öğrenciye özel kutu adı (yoksa genel kutuya düşer)
-String _boxNameForStudent(String? studentId) =>
-    (studentId != null && studentId.isNotEmpty)
-        ? 'cizelge_kutusu_$studentId'
-        : 'cizelge_kutusu';
-
 /// Eski/yanlış değerleri güvenli bir şekilde normalize et.
 String _normalizeType(dynamic raw) {
   final s = (raw ?? '').toString().toLowerCase().trim();
@@ -32,18 +27,23 @@ String _normalizeType(dynamic raw) {
 class CizelgeListesiSayfasi extends StatelessWidget {
   const CizelgeListesiSayfasi({super.key});
 
-  Future<Box> _openBox(BuildContext context) async {
-    final currentId = context.read<CurrentStudent?>()?.currentId;
-    return Hive.openBox(_boxNameForStudent(currentId));
-  }
+  Future<Box> _openBox(String studentId) async =>
+      Hive.openBox('cizelge_kutusu_$studentId');
 
   @override
   Widget build(BuildContext context) {
     // Öğrenci değişiminde rebuild olsun
     final currentId = context.watch<CurrentStudent?>()?.currentId;
 
+    if (currentId == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Çizelgeler')),
+        body: const Center(child: Text('Lütfen önce bir öğrenci seçin.')),
+      );
+    }
+
     return FutureBuilder<Box>(
-      future: _openBox(context),
+      future: _openBox(currentId),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -58,7 +58,7 @@ class CizelgeListesiSayfasi extends StatelessWidget {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text('Çizelgeler${currentId != null ? "  (Öğrenci: $currentId)" : ""}'),
+            title: Text('Çizelgeler  (Öğrenci: $currentId)'),
             actions: [
               IconButton(
                 tooltip: 'Tümünü temizle',
@@ -146,7 +146,6 @@ class CizelgeListesiSayfasi extends StatelessWidget {
             tooltip: 'Çizelge ekle',
             child: const Icon(Icons.add),
             onPressed: () async {
-              // tür seçtir → mevcut CizelgeEkleSayfasi(tur: ...) sayfasına gönder
               final picked = await showModalBottomSheet<String>(
                 context: context,
                 builder: (_) => SafeArea(
@@ -171,7 +170,12 @@ class CizelgeListesiSayfasi extends StatelessWidget {
 
               await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => CizelgeEkleSayfasi(tur: _normalizeType(picked))),
+                MaterialPageRoute(
+                  builder: (_) => CizelgeEkleSayfasi(
+                    tur: _normalizeType(picked),
+                    studentId: currentId,
+                  ),
+                ),
               );
             },
           ),

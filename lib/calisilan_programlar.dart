@@ -48,18 +48,8 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
     };
   }
 
-  Future<Box> _openProgramBox(String studentId) async {
-    try {
-      final studentBox = await Hive.openBox('program_bilgileri_$studentId');
-      try {
-        final defaultBox = await Hive.openBox('program_bilgileri');
-        if (studentBox.isEmpty && defaultBox.isNotEmpty) return defaultBox;
-      } catch (_) {}
-      return studentBox;
-    } catch (_) {
-      return Hive.openBox('program_bilgileri');
-    }
-  }
+  Future<Box> _openProgramBox(String studentId) async =>
+      Hive.openBox('program_bilgileri_$studentId');
 
   void _maybeAutoNavigate(
       BuildContext context,
@@ -219,7 +209,8 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
 
   Future<void> _prepareBoxAndLoadForDate() async {
     final currentId = context.read<CurrentStudent>().currentId;
-    final boxName = currentId != null ? 'veri_kutusu_$currentId' : 'veri_kutusu';
+    if (currentId == null) return;
+    final boxName = 'veri_kutusu_$currentId';
     _veriBox ??= await Hive.openBox(boxName);
     await _loadToday();
   }
@@ -275,6 +266,8 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
 
   Future<void> _saveToday() async {
     if (_veriBox == null) return;
+    final currentId = context.read<CurrentStudent>().currentId;
+    if (currentId == null) return;
 
     final now = DateTime.now();
     final rec = {
@@ -294,6 +287,7 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
       // uyumluluk için sayısal özet:
       'tekrarSayisi': _tekrarFlags.where((e) => e).length,
       'genellemeSayisi': _genellemeFlags.where((e) => e).length,
+      'studentId': currentId,
     };
     await _veriBox!.add(rec);
 

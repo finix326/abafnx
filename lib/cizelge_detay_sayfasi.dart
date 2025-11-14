@@ -28,9 +28,10 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
 
   Future<Box> _openBox(BuildContext context) async {
     final currentId = context.read<CurrentStudent>().currentId;
-    final name =
-    (currentId != null && currentId.isNotEmpty) ? 'cizelge_kutusu_$currentId' : 'cizelge_kutusu';
-    return Hive.openBox(name);
+    if (currentId == null || currentId.isEmpty) {
+      return Future.error('Öğrenci seçimi bulunamadı');
+    }
+    return Hive.openBox('cizelge_kutusu_$currentId');
   }
 
   Future<void> _yukle(Box box) async {
@@ -56,12 +57,15 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
   Future<void> _kaydet() async {
     final box = _box;
     if (box == null) return;
+    final currentId = context.read<CurrentStudent>().currentId;
+    if (currentId == null || currentId.isEmpty) return;
     final eski = (box.get(widget.cizelgeAdi) as Map?) ?? {};
     await box.put(widget.cizelgeAdi, {
       ...eski,
       'tur': 'yazili',
       'icerik': _icerik,
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      'studentId': currentId,
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -93,6 +97,12 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (snap.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: Text(widget.cizelgeAdi)),
+            body: Center(child: Text('${snap.error}')),
+          );
         }
         if (!snap.hasData) {
           return Scaffold(
