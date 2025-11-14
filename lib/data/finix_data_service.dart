@@ -9,6 +9,10 @@ class FinixDataService {
   static const String boxName = 'finix_records';
   static final FinixDataService instance = FinixDataService._();
 
+  /// Returns the scoped Hive box name for a student specific store.
+  static String scopedBox(String baseName, String studentId) =>
+      '${baseName}_$studentId';
+
   Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
       await Hive.openBox(boxName);

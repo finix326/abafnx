@@ -43,25 +43,51 @@ import 'eslestirme_oyun_listesi.dart';
 // DÜZELTİLDİ: Eksik import eklendi
 import 'hafiza_oyunu_listesi_sayfasi.dart';
 
+Future<void> _openGlobalHiveBoxes() async {
+  const globalBoxes = <String>{
+    'veri_kutusu',
+    'program_bilgileri',
+    'cizelge_kutusu',
+    'bep_raporlari',
+    'sohbet_kutusu',
+    'es_game_box',
+    'kart_dizileri',
+    'hafiza_oyunlari',
+  };
+
+  for (final name in globalBoxes) {
+    if (!Hive.isBoxOpen(name)) {
+      await Hive.openBox(name);
+    }
+  }
+}
+
+Future<void> _openStudentScopedBoxes(String studentId) async {
+  const scopedBases = <String>{
+    'veri_kutusu',
+    'program_bilgileri',
+    'cizelge_kutusu',
+    'bep_raporlari',
+    'sohbet_kutusu',
+    'es_game_box',
+    'kart_dizileri',
+    'hafiza_oyunlari',
+  };
+
+  for (final base in scopedBases) {
+    final boxName = FinixDataService.scopedBox(base, studentId);
+    if (!Hive.isBoxOpen(boxName)) {
+      await Hive.openBox(boxName);
+    }
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final appDocDir = await getApplicationDocumentsDirectory();
   await Hive.initFlutter(appDocDir.path);
 
-  // Eski kutular (geri uyumluluk)
-  await Hive.openBox('veri_kutusu');
-  await Hive.openBox('program_bilgileri');
-  await Hive.openBox('cizelge_kutusu');
-  await Hive.openBox('bep_raporlari');
-  await Hive.openBox('sohbet_kutusu');
-
-  // ✅ Yeni: Eşleştirme oyunları için kutu
-  await Hive.openBox('es_game_box');
-
-  // ✅ Kartlar için kutu
-  await Hive.openBox('kart_dizileri');
-
-  await Hive.openBox('hafiza_oyunlari');
+  await _openGlobalHiveBoxes();
 
   // Ortak Finix kayıt kutusu
   await FinixDataService.instance.init();
@@ -86,6 +112,11 @@ Future<void> main() async {
 
   final current = CurrentStudent();
   await current.load();
+
+  final scopedId = current.currentId;
+  if (scopedId != null && scopedId.isNotEmpty) {
+    await _openStudentScopedBoxes(scopedId);
+  }
 
   runApp(
     ChangeNotifierProvider(
