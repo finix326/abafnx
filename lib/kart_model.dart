@@ -17,10 +17,14 @@ class KartModel extends HiveObject {
   @HiveField(3)
   String? sesYolu;
 
+  @HiveField(4)
+  String? studentId;
+
   KartModel({
     required this.id,
     required this.baslik,
     this.resimYolu,
     this.sesYolu,
+    this.studentId,
   });
 }

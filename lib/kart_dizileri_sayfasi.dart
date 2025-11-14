@@ -1,7 +1,9 @@
 // lib/kart_dizileri_sayfasi.dart
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
+
+import 'app_state/current_student.dart';
 import 'kart_detay_sayfasi.dart';
 
 class KartDizileriSayfasi extends StatefulWidget {
@@ -12,12 +14,12 @@ class KartDizileriSayfasi extends StatefulWidget {
 }
 
 class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
-  late Box _box;
+  late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
 
   @override
   void initState() {
     super.initState();
-    _box = Hive.box('kart_dizileri');
+    _boxFuture = Hive.openBox<Map<dynamic, dynamic>>('kart_dizileri');
   }
 
   Future<void> _yeniDiziEkle() async {
@@ -39,14 +41,24 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
 
     if (onay == true && controller.text.trim().isNotEmpty) {
       final id = DateTime.now().millisecondsSinceEpoch.toString();
-      await _box.put(id, {'id': id, 'ad': controller.text.trim(), 'kartlar': []});
+      final box = await _boxFuture;
+      final studentId = context.read<CurrentStudent>().currentId?.trim();
+      final data = {
+        'id': id,
+        'ad': controller.text.trim(),
+        'kartlar': <Map<String, dynamic>>[],
+      };
+      if (studentId != null && studentId.isNotEmpty) {
+        data['studentId'] = studentId;
+      }
+      await box.put(id, data);
       setState(() {});
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final keys = _box.keys.toList();
+    final currentStudentId = context.watch<CurrentStudent>().currentId;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kart Dizileri')),
@@ -54,31 +66,85 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
         onPressed: _yeniDiziEkle,
         child: const Icon(Icons.add),
       ),
-      body: ValueListenableBuilder(
-        valueListenable: _box.listenable(),
-        builder: (context, box, _) {
-          if (box.isEmpty) {
-            return const Center(child: Text('Henüz kart dizisi eklenmedi.'));
+      body: FutureBuilder<Box<Map<dynamic, dynamic>>>(
+        future: _boxFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: Text('Kart dizileri kutusu açılamadı.'));
           }
 
-          final keys = box.keys.toList();
-          return ListView.builder(
-            itemCount: keys.length,
-            itemBuilder: (_, i) {
-              final data = Map<String, dynamic>.from(box.get(keys[i]));
-              return ListTile(
-                title: Text(data['ad'] ?? 'Adsız Dizi'),
-                subtitle: Text('${(data['kartlar'] as List).length} kart'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => KartDetaySayfasi(
-                      diziId: data['id'],
-                      diziAdi: data['ad'],
-                    ),
+          final box = snapshot.data!;
+          return ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
+            valueListenable: box.listenable(),
+            builder: (context, _, __) {
+              final diziler = <Map<String, dynamic>>[];
+
+              for (final key in box.keys) {
+                final raw = box.get(key);
+                if (raw is! Map) continue;
+                final normalized = Map<String, dynamic>.from(raw);
+                final ownerId = (normalized['studentId'] as String?)?.trim();
+
+                final matchesStudent = (currentStudentId == null ||
+                        currentStudentId.isEmpty)
+                    ? (ownerId == null || ownerId.isEmpty)
+                    : ownerId == currentStudentId;
+
+                if (!matchesStudent) continue;
+
+                normalized['kartlar'] =
+                    List<Map<String, dynamic>>.from((normalized['kartlar']
+                            as List? ??
+                        const [])
+                        .map((e) =>
+                            Map<String, dynamic>.from(e as Map<dynamic, dynamic>)));
+
+                diziler.add(normalized);
+              }
+
+              if (diziler.isEmpty) {
+                final emptyText = (currentStudentId == null ||
+                        currentStudentId.isEmpty)
+                    ? 'Henüz kart dizisi eklenmedi.\nSağ alttan yeni bir tane oluştur.'
+                    : 'Bu öğrenci için kart dizisi yok.\nSağ alttan yeni bir tane oluştur.';
+                return Center(
+                  child: Text(
+                    emptyText,
+                    textAlign: TextAlign.center,
                   ),
-                ),
+                );
+              }
+
+              diziler.sort((a, b) {
+                final aId = int.tryParse((a['id'] ?? '').toString()) ?? 0;
+                final bId = int.tryParse((b['id'] ?? '').toString()) ?? 0;
+                return bId.compareTo(aId);
+              });
+
+              return ListView.builder(
+                itemCount: diziler.length,
+                itemBuilder: (_, i) {
+                  final data = diziler[i];
+                  final kartlar = (data['kartlar'] as List).length;
+
+                  return ListTile(
+                    title: Text(data['ad']?.toString() ?? 'Adsız Dizi'),
+                    subtitle: Text('$kartlar kart'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => KartDetaySayfasi(
+                          diziId: data['id'].toString(),
+                          diziAdi: data['ad']?.toString() ?? 'Adsız Dizi',
+                        ),
+                      ),
+                    ),
+                  );
+                },
               );
             },
           );

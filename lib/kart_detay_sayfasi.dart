@@ -1,11 +1,11 @@
 // lib/kart_detay_sayfasi.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 class KartDetaySayfasi extends StatefulWidget {
   final String diziId;
@@ -22,7 +22,7 @@ class KartDetaySayfasi extends StatefulWidget {
 }
 
 class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
-  late Box _box;
+  late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
 
   // Grid boyut kontrolü (kalıcı)
   // maxExtent küçükse daha çok sütun sığar, büyütürsen kareler büyür.
@@ -36,8 +36,11 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
   @override
   void initState() {
     super.initState();
-    _box = Hive.box('kart_dizileri');
-    _loadGridPrefs();
+    _boxFuture = Hive.openBox<Map<dynamic, dynamic>>('kart_dizileri');
+    _boxFuture.then((box) {
+      if (!mounted) return;
+      _loadGridPrefs(box);
+    });
     _initAudio();
   }
 
@@ -53,28 +56,38 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
     super.dispose();
   }
 
-  void _loadGridPrefs() {
-    final dizi = Map<String, dynamic>.from(_box.get(widget.diziId));
+  void _loadGridPrefs(Box<Map<dynamic, dynamic>> box) {
+    final raw = box.get(widget.diziId);
+    if (raw is! Map) return;
+    final dizi = Map<String, dynamic>.from(raw);
     final pref = (dizi['grid_max_extent'] as num?)?.toDouble();
     if (pref != null && pref > 80 && pref < 420) {
-      _maxExtent = pref;
+      setState(() {
+        _maxExtent = pref;
+      });
     }
   }
 
   Future<void> _saveGridPrefs() async {
-    final dizi = Map<String, dynamic>.from(_box.get(widget.diziId));
-    await _box.put(widget.diziId, {
+    final box = await _boxFuture;
+    final raw = box.get(widget.diziId);
+    if (raw is! Map) return;
+    final dizi = Map<String, dynamic>.from(raw);
+    await box.put(widget.diziId, {
       ...dizi,
       'grid_max_extent': _maxExtent,
     });
   }
 
   Future<void> _yeniKartEkle() async {
-    final dizi = Map<String, dynamic>.from(_box.get(widget.diziId));
+    final box = await _boxFuture;
+    final raw = box.get(widget.diziId);
+    if (raw is! Map) return;
+    final dizi = Map<String, dynamic>.from(raw);
     final List kartlar = List.from(dizi['kartlar'] ?? []);
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     kartlar.add({'id': id, 'foto': null, 'ses': null, 'metin': ''});
-    await _box.put(widget.diziId, {...dizi, 'kartlar': kartlar});
+    await box.put(widget.diziId, {...dizi, 'kartlar': kartlar});
     setState(() {});
   }
 
@@ -99,11 +112,14 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
   }
 
   Future<void> _guncelleKart(Map<String, dynamic> kart) async {
-    final dizi = Map<String, dynamic>.from(_box.get(widget.diziId));
+    final box = await _boxFuture;
+    final raw = box.get(widget.diziId);
+    if (raw is! Map) return;
+    final dizi = Map<String, dynamic>.from(raw);
     final List kartlar = List.from(dizi['kartlar'] ?? []);
     final index = kartlar.indexWhere((k) => k['id'] == kart['id']);
     if (index != -1) kartlar[index] = kart;
-    await _box.put(widget.diziId, {...dizi, 'kartlar': kartlar});
+    await box.put(widget.diziId, {...dizi, 'kartlar': kartlar});
     setState(() {});
   }
 
@@ -267,56 +283,85 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
 
   @override
   Widget build(BuildContext context) {
-    final dizi = Map<String, dynamic>.from(_box.get(widget.diziId));
-    final List kartlar = List.from(dizi['kartlar'] ?? []);
+    return FutureBuilder<Box<Map<dynamic, dynamic>>>(
+      future: _boxFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Scaffold(
+            appBar: AppBar(title: Text(widget.diziAdi)),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (!snapshot.hasData) {
+          return Scaffold(
+            appBar: AppBar(title: Text(widget.diziAdi)),
+            body: const Center(child: Text('Kart dizisi bulunamadı.')),
+          );
+        }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.diziAdi),
-        actions: [
-          IconButton(
-            tooltip: 'Boyut',
-            icon: const Icon(Icons.aspect_ratio_outlined),
-            onPressed: _showResizeSheet,
-          ),
-          IconButton(
-            tooltip: 'Kaydet',
-            icon: const Icon(Icons.save_outlined),
-            onPressed: _saveAll,
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _yeniKartEkle,
-        child: const Icon(Icons.add),
-      ),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(10),
-        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: _maxExtent, // slider ile kontrol
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 0.95, // kare + metin
-        ),
-        itemCount: kartlar.length,
-        itemBuilder: (_, i) {
-          final Map<String, dynamic> kart = Map<String, dynamic>.from(kartlar[i]);
+        final box = snapshot.data!;
+        return ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
+          valueListenable: box.listenable(keys: [widget.diziId]),
+          builder: (context, _, __) {
+            final raw = box.get(widget.diziId);
+            if (raw is! Map) {
+              return Scaffold(
+                appBar: AppBar(title: Text(widget.diziAdi)),
+                body: const Center(child: Text('Kart dizisi bulunamadı.')),
+              );
+            }
+
+            final dizi = Map<String, dynamic>.from(raw);
+            final List kartlar = List.from(dizi['kartlar'] ?? []);
+
+            return Scaffold(
+              appBar: AppBar(
+                title: Text(widget.diziAdi),
+                actions: [
+                  IconButton(
+                    tooltip: 'Boyut',
+                    icon: const Icon(Icons.aspect_ratio_outlined),
+                    onPressed: _showResizeSheet,
+                  ),
+                  IconButton(
+                    tooltip: 'Kaydet',
+                    icon: const Icon(Icons.save_outlined),
+                    onPressed: _saveAll,
+                  ),
+                ],
+              ),
+              floatingActionButton: FloatingActionButton(
+                onPressed: _yeniKartEkle,
+                child: const Icon(Icons.add),
+              ),
+              body: GridView.builder(
+                padding: const EdgeInsets.all(10),
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: _maxExtent, // slider ile kontrol
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 0.95, // kare + metin
+                ),
+                itemCount: kartlar.length,
+                itemBuilder: (_, i) {
+                  final Map<String, dynamic> kart =
+                      Map<String, dynamic>.from(kartlar[i]);
           final String id = kart['id'] as String;
           final bool fotoVar = (kart['foto'] != null && (kart['foto'] as String).isNotEmpty);
           final bool sesVar = (kart['ses'] != null && (kart['ses'] as String).isNotEmpty);
           final bool recording = (_recordingCardId == id);
 
-          return GestureDetector(
-            onTap: sesVar ? () => _playOrStop(kart) : null,
-            onLongPress: () => _kartMenusu(context, kart),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blueGrey.shade200, width: 1.5),
-              ),
-              child: Column(
-                children: [
+                  return GestureDetector(
+                    onTap: sesVar ? () => _playOrStop(kart) : null,
+                    onLongPress: () => _kartMenusu(context, kart),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blueGrey.shade200, width: 1.5),
+                      ),
+                      child: Column(
+                        children: [
                   // KARE BÖLGE
                   Expanded(
                     child: Stack(
@@ -403,6 +448,10 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
           );
         },
       ),
+    );
+          },
+        );
+      },
     );
   }
 }
