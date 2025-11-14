@@ -52,23 +52,24 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
       Hive.openBox('program_bilgileri_$studentId');
 
   void _maybeAutoNavigate(
-      BuildContext context,
-      List<MapEntry<dynamic, Map<String, dynamic>>> entries,
-      ) {
+    BuildContext context,
+    List<_ProgramRecord> entries,
+  ) {
     if (_didAutoSelect) return;
     if (entries.isEmpty) return;
 
     // initialProgramKey öncelikli
     if (widget.initialProgramKey != null) {
-      final found = entries.where((e) => e.key.toString() == widget.initialProgramKey).toList();
+      final found =
+          entries.where((e) => e.key.toString() == widget.initialProgramKey).toList();
       if (found.isNotEmpty) _autoSelectKey = found.first.key.toString();
     }
     // tek kayıt varsa onu seç
     _autoSelectKey ??= entries.length == 1 ? entries.first.key.toString() : null;
     // yoksa en son oluşturulanı seç
     _autoSelectKey ??= (entries
-      ..sort((a, b) =>
-          (a.value['createdAt'] as int).compareTo((b.value['createdAt'] as int))))
+          ..sort((a, b) => (a.value['createdAt'] as int)
+              .compareTo((b.value['createdAt'] as int))))
         .last
         .key
         .toString();
@@ -116,29 +117,41 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
           );
         }
         final progBox = progSnap.data!;
-        final entries = <MapEntry<dynamic, Map<String, dynamic>>>[];
+        final entries = <_ProgramRecord>[];
 
         for (final k in progBox.keys) {
           final v = progBox.get(k);
           if (v == null) continue;
-          entries.add(MapEntry(k, _normalizeProgram(v)));
+          final normalized = _normalizeProgram(v);
+          final studentId = v is Map ? v['studentId']?.toString() : null;
+          entries.add(
+            _ProgramRecord(
+              key: k,
+              value: normalized,
+              studentId: studentId,
+            ),
+          );
         }
-        entries.sort((a, b) => (a.value['programAdi'] ?? '')
+
+        final filteredEntries =
+            entries.where((e) => e.studentId == currentId).toList();
+
+        filteredEntries.sort((a, b) => (a.value['programAdi'] ?? '')
             .toString()
             .compareTo((b.value['programAdi'] ?? '').toString()));
 
         // Otomatik yönlendirme (isteğe bağlı)
-        _maybeAutoNavigate(context, entries);
+        _maybeAutoNavigate(context, filteredEntries);
 
         return Scaffold(
           appBar: AppBar(title: const Text('Programlar')),
-          body: entries.isEmpty
+          body: filteredEntries.isEmpty
               ? const Center(child: Text('Henüz program yok.'))
               : ListView.separated(
-            itemCount: entries.length,
+            itemCount: filteredEntries.length,
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (_, i) {
-              final e = entries[i];
+              final e = filteredEntries[i];
               final ad = (e.value['programAdi'] ?? e.key).toString();
               final t = (e.value['tekrarSayisi'] as int?) ?? 0;
               final g = (e.value['genellemeSayisi'] as int?) ?? 0;
@@ -460,6 +473,18 @@ class _SeriesData {
       : dates = const [],
         tekrarByDate = const {},
         genellemeByDate = const {};
+}
+
+class _ProgramRecord {
+  final dynamic key;
+  final Map<String, dynamic> value;
+  final String? studentId;
+
+  const _ProgramRecord({
+    required this.key,
+    required this.value,
+    required this.studentId,
+  });
 }
 
 /// Çizgi grafik kartı – fl_chart ile iki seri (Tekrar & Genelleme)
