@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state/current_student.dart';
+import 'services/finix_data_service.dart';
 
 class CizelgeDetayResimliSesliSayfasi extends StatefulWidget {
   final String cizelgeAdi;
@@ -42,6 +43,7 @@ class _CizelgeDetayResimliSesliSayfasiState
   Directory? _cizelgeDir;
   late final Future<void> _initialLoad;
   String? _ownerId;
+  int? _recordCreatedAt;
 
   @override
   void initState() {
@@ -58,17 +60,26 @@ class _CizelgeDetayResimliSesliSayfasiState
     await _recorder.openRecorder();
 
     _cizelgeDir = await _ensureCizelgeDir();
-    final existing = Map<String, dynamic>.from(
-      (_box!.get(widget.cizelgeAdi) as Map?)?.cast<dynamic, dynamic>() ??
-          const <String, dynamic>{},
-    );
+    Map<String, dynamic> existing = const <String, dynamic>{};
+    final raw = _box!.get(widget.cizelgeAdi);
+    if (raw is Map) {
+      final record = FinixDataService.decode(
+        raw,
+        module: 'cizelge',
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        await _box!.put(widget.cizelgeAdi, record.toMap());
+      }
+      existing = Map<String, dynamic>.from(record.payload);
+      _recordCreatedAt = record.createdAt;
+      _ownerId = record.studentId;
+    }
     final list = (existing['icerik'] as List?) ?? const [];
-    final ownerFromBox = (existing['studentId'] as String?)?.trim();
     final fallback =
         mounted ? context.read<CurrentStudent>().currentId?.trim() : null;
-    _ownerId = (ownerFromBox != null && ownerFromBox.isNotEmpty)
-        ? ownerFromBox
-        : (fallback != null && fallback.isNotEmpty ? fallback : null);
+    if (_ownerId == null || _ownerId!.isEmpty) {
+      _ownerId = (fallback != null && fallback.isNotEmpty) ? fallback : null;
+    }
 
     _icerik.clear();
     if (list.isEmpty) {
@@ -126,36 +137,48 @@ class _CizelgeDetayResimliSesliSayfasiState
   Future<void> _saveSilent() async {
     final box = _box ?? await _boxFuture;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final eski = Map<String, dynamic>.from(
-      (box.get(widget.cizelgeAdi) as Map?)?.cast<dynamic, dynamic>() ??
-          const <String, dynamic>{},
-    );
-    final data = <String, dynamic>{
-      ...eski,
-      'tur': 'resimli_sesli',
-      'icerik': _icerik
+    final raw = box.get(widget.cizelgeAdi);
+    FinixRecord? record;
+    if (raw is Map) {
+      record = FinixDataService.decode(
+        raw,
+        module: 'cizelge',
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        await box.put(widget.cizelgeAdi, record.toMap());
+      }
+    }
+
+    final payload = record != null
+        ? Map<String, dynamic>.from(record.payload)
+        : <String, dynamic>{};
+    payload
+      ..['tur'] = 'resimli_sesli'
+      ..['icerik'] = _icerik
           .map((e) => {
                 'resimPath': e['resimPath'],
                 'sesPath': e['sesPath'],
                 'metin': (e['metin'] ?? '').toString(),
               })
-          .toList(),
-      'updatedAt': now,
-    };
-    data['createdAt'] = (data['createdAt'] as int?) ?? now;
+          .toList()
+      ..['updatedAt'] = now
+      ..putIfAbsent('createdAt', () => _recordCreatedAt ?? now);
 
     final fallback =
         mounted ? context.read<CurrentStudent>().currentId?.trim() : null;
     final owner = _ownerId?.trim() ?? fallback;
-    if (owner != null && owner.isNotEmpty) {
-      data['studentId'] = owner;
-      _ownerId = owner;
-    } else {
-      data.remove('studentId');
-      _ownerId = null;
-    }
+    _ownerId = owner?.isNotEmpty == true ? owner : null;
 
-    await box.put(widget.cizelgeAdi, data);
+    final updatedRecord = FinixDataService.buildRecord(
+      module: 'cizelge',
+      payload: payload,
+      studentId: _ownerId,
+      createdAt: _recordCreatedAt ?? record?.createdAt ?? now,
+      updatedAt: now,
+    );
+    _recordCreatedAt = updatedRecord.createdAt;
+
+    await box.put(widget.cizelgeAdi, updatedRecord.toMap());
   }
 
   void _addCard() {

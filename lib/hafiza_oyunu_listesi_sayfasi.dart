@@ -1,5 +1,7 @@
 // lib/hafiza_oyunu_listesi_sayfasi.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'hafiza_oyunu_model.dart';
 import 'hafiza_oyunu_detay_sayfasi.dart';
 import 'app_state/current_student.dart';
+import 'services/finix_data_service.dart';
 
 class HafizaOyunuListesiSayfasi extends StatefulWidget {
   const HafizaOyunuListesiSayfasi({super.key});
@@ -120,14 +123,14 @@ class _HafizaOyunuListesiSayfasiState
 
     final box = await _getBox();
     final studentId = context.read<CurrentStudent>().currentId;
-    final data = oyun.toMap();
-    if (studentId != null && studentId.isNotEmpty) {
-      data['studentId'] = studentId;
-    } else {
-      data.remove('studentId');
-    }
+    final record = FinixDataService.buildRecord(
+      module: 'hafiza_oyunlari',
+      payload: oyun.toMap(),
+      studentId: studentId,
+      createdAt: oyun.createdAt,
+    );
 
-    await box.put(id, data);
+    await box.put(id, record.toMap());
 
     if (!mounted) return;
     Navigator.push(
@@ -140,8 +143,15 @@ class _HafizaOyunuListesiSayfasiState
 
   Future<void> _oyunYenidenAdlandir(String id) async {
     final box = await _getBox();
-    final raw = Map<String, dynamic>.from((box.get(id) as Map?) ?? {});
-    final oyun = HafizaOyunu.fromMap(id, raw);
+    final raw = box.get(id);
+    if (raw is! Map) return;
+
+    final record = FinixDataService.decode(
+      raw,
+      module: 'hafiza_oyunlari',
+      fallbackStudentId: context.read<CurrentStudent>().currentId,
+    );
+    final oyun = HafizaOyunu.fromMap(id, record.payload);
     final controller = TextEditingController(text: oyun.title);
 
     final newTitle = await showDialog<String?>(
@@ -172,16 +182,15 @@ class _HafizaOyunuListesiSayfasiState
 
     if (newTitle == null) return;
     oyun.title = newTitle.isEmpty ? oyun.title : newTitle;
-    final ownerId = (raw['studentId'] as String?) ??
+    final ownerId = record.studentId ??
         context.read<CurrentStudent>().currentId;
-    final data = oyun.toMap();
-    if (ownerId != null && ownerId.isNotEmpty) {
-      data['studentId'] = ownerId;
-    } else {
-      data.remove('studentId');
-    }
+    final updated = record.copyWith(
+      studentId: ownerId,
+      payload: oyun.toMap(),
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
 
-    await box.put(id, data);
+    await box.put(id, updated.toMap());
   }
 
   Future<void> _oyunSil(String id) async {
@@ -218,8 +227,17 @@ class _HafizaOyunuListesiSayfasiState
               for (final key in box.keys) {
                 final raw = box.get(key);
                 if (raw is! Map) continue;
-                final normalized = Map<String, dynamic>.from(raw);
-                final ownerId = (normalized['studentId'] as String?)?.trim();
+
+                final record = FinixDataService.decode(
+                  raw,
+                  module: 'hafiza_oyunlari',
+                  fallbackStudentId: currentStudentId,
+                );
+                if (!FinixDataService.isRecord(raw)) {
+                  unawaited(box.put(key, record.toMap()));
+                }
+
+                final ownerId = record.studentId?.trim();
 
                 final matchesStudent = (currentStudentId == null ||
                         currentStudentId.isEmpty)
@@ -229,7 +247,7 @@ class _HafizaOyunuListesiSayfasiState
                 if (!matchesStudent) continue;
 
                 final id = key.toString();
-                oyunlar.add(HafizaOyunu.fromMap(id, normalized));
+                oyunlar.add(HafizaOyunu.fromMap(id, record.payload));
               }
 
               oyunlar.sort(

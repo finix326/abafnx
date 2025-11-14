@@ -1,10 +1,13 @@
 // lib/kartlar_sayfasi.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state/current_student.dart';
 import 'kart_detay_sayfasi.dart';
+import 'services/finix_data_service.dart';
 
 class KartlarSayfasi extends StatefulWidget {
   const KartlarSayfasi({super.key});
@@ -40,18 +43,23 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
     );
 
     if (onay == true && controller.text.trim().isNotEmpty) {
-      final id = DateTime.now().millisecondsSinceEpoch.toString();
+      final createdAt = DateTime.now().millisecondsSinceEpoch;
+      final id = createdAt.toString();
       final box = await _boxFuture;
       final studentId = context.read<CurrentStudent>().currentId?.trim();
       final data = {
         'id': id,
         'ad': controller.text.trim(),
         'kartlar': <Map<String, dynamic>>[],
+        'createdAt': createdAt,
       };
-      if (studentId != null && studentId.isNotEmpty) {
-        data['studentId'] = studentId;
-      }
-      await box.put(id, data);
+      final record = FinixDataService.buildRecord(
+        module: 'kart_dizileri',
+        payload: data,
+        studentId: studentId,
+        createdAt: createdAt,
+      );
+      await box.put(id, record.toMap());
       setState(() {});
     }
   }
@@ -85,8 +93,17 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
               for (final key in box.keys) {
                 final raw = box.get(key);
                 if (raw is! Map) continue;
-                final normalized = Map<String, dynamic>.from(raw);
-                final ownerId = (normalized['studentId'] as String?)?.trim();
+
+                final record = FinixDataService.decode(
+                  raw,
+                  module: 'kart_dizileri',
+                  fallbackStudentId: currentStudentId,
+                );
+                if (!FinixDataService.isRecord(raw)) {
+                  unawaited(box.put(key, record.toMap()));
+                }
+
+                final ownerId = record.studentId?.trim();
 
                 final matchesStudent = (currentStudentId == null ||
                         currentStudentId.isEmpty)
@@ -95,6 +112,10 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
 
                 if (!matchesStudent) continue;
 
+                final normalized = Map<String, dynamic>.from(record.payload);
+                normalized['id'] = normalized['id'] ?? key.toString();
+                normalized['createdAt'] =
+                    normalized['createdAt'] ?? record.createdAt;
                 normalized['kartlar'] =
                     List<Map<String, dynamic>>.from((normalized['kartlar']
                             as List? ??
@@ -119,9 +140,11 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
               }
 
               diziler.sort((a, b) {
-                final aId = int.tryParse((a['id'] ?? '').toString()) ?? 0;
-                final bId = int.tryParse((b['id'] ?? '').toString()) ?? 0;
-                return bId.compareTo(aId);
+                final at = (a['createdAt'] as int?) ??
+                    int.tryParse((a['id'] ?? '').toString()) ?? 0;
+                final bt = (b['createdAt'] as int?) ??
+                    int.tryParse((b['id'] ?? '').toString()) ?? 0;
+                return bt.compareTo(at);
               });
 
               return ListView.builder(

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state/current_student.dart';
+import 'services/finix_data_service.dart';
 
 class CizelgeDetaySayfasi extends StatefulWidget {
   final String cizelgeAdi;
@@ -28,6 +31,7 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
   bool _isLoaded = false;
   bool _isLoading = false;
   String? _ownerId;
+  int? _recordCreatedAt;
 
   @override
   void initState() {
@@ -38,17 +42,26 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
   Future<void> _yukle(Box<Map<dynamic, dynamic>> box) async {
     if (!mounted) return;
     final raw = box.get(widget.cizelgeAdi);
-    final map = (raw is Map)
-        ? Map<String, dynamic>.from(raw as Map<dynamic, dynamic>)
-        : <String, dynamic>{};
+    Map<String, dynamic> map = <String, dynamic>{};
+    FinixRecord? record;
+    if (raw is Map) {
+      record = FinixDataService.decode(
+        raw,
+        module: 'cizelge',
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        unawaited(box.put(widget.cizelgeAdi, record.toMap()));
+      }
+      map = Map<String, dynamic>.from(record.payload);
+    }
     final list = List<String>.from(
       ((map['icerik'] as List?) ?? const [])
           .map((e) => e == null ? '' : e.toString()),
     );
     if (list.isEmpty) list.add('');
 
-    final ownerFromBox = (map['studentId'] as String?)?.trim();
     final fallback = context.read<CurrentStudent>().currentId?.trim();
+    final ownerFromBox = record?.studentId?.trim();
     final owner =
         (ownerFromBox != null && ownerFromBox.isNotEmpty) ? ownerFromBox : fallback;
 
@@ -61,6 +74,8 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
         ..clear()
         ..addAll(List<Color>.generate(_icerik.length, (_) => Colors.white));
       _ownerId = owner;
+      _recordCreatedAt = record?.createdAt ??
+          (map['createdAt'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
       _isLoaded = true;
       _isLoading = false;
     });
@@ -76,30 +91,42 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
   Future<void> _kaydet() async {
     final box = _box ?? await _boxFuture;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final eski = Map<String, dynamic>.from(
-      (box.get(widget.cizelgeAdi) as Map?)?.cast<dynamic, dynamic>() ??
-          const <String, dynamic>{},
-    );
-    final data = <String, dynamic>{
-      ...eski,
-      'tur': 'yazili',
-      'icerik': List<String>.from(_icerik),
-      'updatedAt': now,
-    };
-    data['createdAt'] = (data['createdAt'] as int?) ?? now;
+    final raw = box.get(widget.cizelgeAdi);
+    FinixRecord? record;
+    if (raw is Map) {
+      record = FinixDataService.decode(
+        raw,
+        module: 'cizelge',
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        unawaited(box.put(widget.cizelgeAdi, record.toMap()));
+      }
+    }
+
+    final payload = record != null
+        ? Map<String, dynamic>.from(record.payload)
+        : <String, dynamic>{};
+    payload
+      ..['tur'] = 'yazili'
+      ..['icerik'] = List<String>.from(_icerik)
+      ..['updatedAt'] = now
+      ..putIfAbsent('createdAt', () => _recordCreatedAt ?? now);
 
     final fallbackOwner =
         mounted ? context.read<CurrentStudent>().currentId?.trim() : null;
     final owner = _ownerId?.trim() ?? fallbackOwner;
-    if (owner != null && owner.isNotEmpty) {
-      data['studentId'] = owner;
-      _ownerId = owner;
-    } else {
-      data.remove('studentId');
-      _ownerId = null;
-    }
+    _ownerId = owner?.isNotEmpty == true ? owner : null;
 
-    await box.put(widget.cizelgeAdi, data);
+    final updatedRecord = FinixDataService.buildRecord(
+      module: 'cizelge',
+      payload: payload,
+      studentId: _ownerId,
+      createdAt: _recordCreatedAt ?? record?.createdAt ?? now,
+      updatedAt: now,
+    );
+    _recordCreatedAt = updatedRecord.createdAt;
+
+    await box.put(widget.cizelgeAdi, updatedRecord.toMap());
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('Kaydedildi')));

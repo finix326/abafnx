@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'app_state/current_student.dart';
 import 'cizelge_detay_resimli_sesli_sayfasi.dart';
 import 'cizelge_detay_sayfasi.dart';
+import 'services/finix_data_service.dart';
 
 class CizelgeEkleSayfasi extends StatefulWidget {
   final String tur;
@@ -48,11 +49,15 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
       'createdAt': now,
       'updatedAt': now,
     };
-    if (studentId != null && studentId.isNotEmpty) {
-      data['studentId'] = studentId;
-    }
+    final record = FinixDataService.buildRecord(
+      module: 'cizelge',
+      payload: data,
+      studentId: studentId,
+      createdAt: now,
+      updatedAt: now,
+    );
 
-    await box.put(ad, data);
+    await box.put(ad, record.toMap());
 
     final hedefSayfa = kaydedilecekTur == 'yazili'
         ? CizelgeDetaySayfasi(cizelgeAdi: ad, tur: kaydedilecekTur)

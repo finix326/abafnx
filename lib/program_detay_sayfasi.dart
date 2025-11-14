@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import 'app_state/current_student.dart';
+import 'services/finix_data_service.dart';
 
 /// Bu sayfa, aktif öğrencinin 'program_bilgileri_<studentId>' kutusundan
 /// Eşleştirme Oyunu kayıtlarını çekip ZAMAN SERİSİ olarak:
@@ -54,13 +57,25 @@ class ProgramDetaySayfasi extends StatelessWidget {
         }
 
         final box = snap.data!;
-        // Tüm kayıtları al, Map tipine cast et, tarihine göre sırala
-        final raw = box.values
-            .where((e) => e is Map)
-            .cast<Map>()
-            .where((m) => (m['programAdi'] ?? '') == 'Eşleştirme Oyunu')
-            .toList()
-          ..sort((a, b) => ((a['tarih'] ?? 0) as int).compareTo((b['tarih'] ?? 0) as int));
+        final raw = <Map<String, dynamic>>[];
+        for (final key in box.keys) {
+          final value = box.get(key);
+          if (value is! Map) continue;
+          final record = FinixDataService.decode(
+            value,
+            module: 'program_bilgileri',
+            fallbackStudentId: currentId,
+          );
+          if (!FinixDataService.isRecord(value)) {
+            unawaited(box.put(key, record.toMap()));
+          }
+          final payload = Map<String, dynamic>.from(record.payload);
+          if ((payload['programAdi'] ?? '') == 'Eşleştirme Oyunu') {
+            raw.add(payload);
+          }
+        }
+        raw.sort((a, b) => ((a['tarih'] ?? 0) as int)
+            .compareTo((b['tarih'] ?? 0) as int));
 
         final pointsYuzde = <FlSpot>[];
         final pointsSure = <FlSpot>[];
@@ -180,7 +195,7 @@ class ProgramDetaySayfasi extends StatelessWidget {
 
 class _StatOzet extends StatelessWidget {
   const _StatOzet({required this.raw});
-  final List<Map> raw;
+  final List<Map<String, dynamic>> raw;
 
   @override
   Widget build(BuildContext context) {

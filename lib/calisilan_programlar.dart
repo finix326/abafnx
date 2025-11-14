@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import 'app_state/current_student.dart';
+import 'services/finix_data_service.dart';
 
 /// Geri uyumluluk için: Projede bazı yerler CalisilanProgramlarSayfasi adını kullanıyor.
 /// Bu wrapper, asıl liste sayfasını döndürür.
@@ -31,13 +34,14 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
   String? _autoSelectKey;
   bool _didAutoSelect = false;
 
-  Map<String, dynamic> _normalizeProgram(dynamic v) {
+  Map<String, dynamic> _normalizeProgram(dynamic v, {int? fallbackCreatedAt}) {
     if (v is Map) {
+      final createdAt = (v['createdAt'] as int?) ?? fallbackCreatedAt ?? 0;
       return {
         'programAdi': v['programAdi'] ?? v['ad'] ?? v['name'] ?? '',
         'tekrarSayisi': ((v['tekrarSayisi'] ?? 0) as num).toInt(),
         'genellemeSayisi': ((v['genellemeSayisi'] ?? 0) as num).toInt(),
-        'createdAt': (v['createdAt'] ?? 0) as int,
+        'createdAt': createdAt,
       };
     }
     return {
@@ -129,9 +133,23 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
         final entries = <MapEntry<dynamic, Map<String, dynamic>>>[];
 
         for (final k in progBox.keys) {
-          final v = progBox.get(k);
-          if (v == null) continue;
-          entries.add(MapEntry(k, _normalizeProgram(v)));
+          final raw = progBox.get(k);
+          if (raw is Map) {
+            final record = FinixDataService.decode(
+              raw,
+              module: 'program_bilgileri',
+              fallbackStudentId: currentId,
+            );
+            if (!FinixDataService.isRecord(raw)) {
+              unawaited(progBox.put(k, record.toMap()));
+            }
+            entries.add(MapEntry(
+              k,
+              _normalizeProgram(record.payload, fallbackCreatedAt: record.createdAt),
+            ));
+          } else if (raw != null) {
+            entries.add(MapEntry(k, _normalizeProgram(raw)));
+          }
         }
         entries.sort((a, b) => (a.value['programAdi'] ?? '')
             .toString()
@@ -204,6 +222,7 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
   late List<bool> _genellemeFlags;
 
   Box? _veriBox;
+  String? _studentId;
 
   @override
   void initState() {
@@ -220,6 +239,7 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
   Future<void> _prepareBoxAndLoadForDate() async {
     final currentId = context.read<CurrentStudent>().currentId;
     final boxName = currentId != null ? 'veri_kutusu_$currentId' : 'veri_kutusu';
+    _studentId = currentId;
     _veriBox ??= await Hive.openBox(boxName);
     await _loadToday();
   }
@@ -234,11 +254,20 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
     // Bu program + bu gün için son kaydı bul
     final entries = <Map>[];
     for (final k in _veriBox!.keys) {
-      final v = _veriBox!.get(k);
-      if (v is Map &&
-          (v['programKey']?.toString() ?? '') == widget.programKey &&
-          (v['tarihStr']?.toString() ?? '') == dk) {
-        entries.add(v);
+      final raw = _veriBox!.get(k);
+      if (raw is! Map) continue;
+      final record = FinixDataService.decode(
+        raw,
+        module: 'program_veri',
+        fallbackStudentId: _studentId,
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        unawaited(_veriBox!.put(k, record.toMap()));
+      }
+      final data = Map<String, dynamic>.from(record.payload);
+      if ((data['programKey']?.toString() ?? '') == widget.programKey &&
+          (data['tarihStr']?.toString() ?? '') == dk) {
+        entries.add(data);
       }
     }
     if (entries.isNotEmpty) {
@@ -295,7 +324,15 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
       'tekrarSayisi': _tekrarFlags.where((e) => e).length,
       'genellemeSayisi': _genellemeFlags.where((e) => e).length,
     };
-    await _veriBox!.add(rec);
+
+    final record = FinixDataService.buildRecord(
+      module: 'program_veri',
+      payload: rec,
+      studentId: _studentId,
+      createdAt: now.millisecondsSinceEpoch,
+      updatedAt: now.millisecondsSinceEpoch,
+    );
+    await _veriBox!.add(record.toMap());
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kaydedildi')));
@@ -310,17 +347,26 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
     final Map<String, int> sumG = {};
 
     for (final k in _veriBox!.keys) {
-      final v = _veriBox!.get(k);
-      if (v is! Map) continue;
-      if ((v['programKey']?.toString() ?? '') != widget.programKey) continue;
+      final raw = _veriBox!.get(k);
+      if (raw is! Map) continue;
+      final record = FinixDataService.decode(
+        raw,
+        module: 'program_veri',
+        fallbackStudentId: _studentId,
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        unawaited(_veriBox!.put(k, record.toMap()));
+      }
+      final data = Map<String, dynamic>.from(record.payload);
+      if ((data['programKey']?.toString() ?? '') != widget.programKey) continue;
 
-      final ds = (v['tarihStr'] ?? '').toString();
+      final ds = (data['tarihStr'] ?? '').toString();
       if (ds.isEmpty) continue;
 
-      final t = (v['tekrarFlags'] as List?)?.where((e) => e == true).length ??
-          ((v['tekrarSayisi'] as num?)?.toInt() ?? 0);
-      final g = (v['genellemeFlags'] as List?)?.where((e) => e == true).length ??
-          ((v['genellemeSayisi'] as num?)?.toInt() ?? 0);
+      final t = (data['tekrarFlags'] as List?)?.where((e) => e == true).length ??
+          ((data['tekrarSayisi'] as num?)?.toInt() ?? 0);
+      final g = (data['genellemeFlags'] as List?)?.where((e) => e == true).length ??
+          ((data['genellemeSayisi'] as num?)?.toInt() ?? 0);
 
       // Aynı gün birden fazla kayıt varsa en yükseğini al
       sumT.update(ds, (old) => max(old, t), ifAbsent: () => t);

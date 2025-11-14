@@ -1,4 +1,5 @@
 // lib/kart_detay_sayfasi.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
@@ -6,6 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+
+import 'services/finix_data_service.dart';
 
 class KartDetaySayfasi extends StatefulWidget {
   final String diziId;
@@ -23,6 +26,8 @@ class KartDetaySayfasi extends StatefulWidget {
 
 class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
   late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
+  String? _ownerId;
+  int? _recordCreatedAt;
 
   // Grid boyut kontrolü (kalıcı)
   // maxExtent küçükse daha çok sütun sığar, büyütürsen kareler büyür.
@@ -57,10 +62,9 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
   }
 
   void _loadGridPrefs(Box<Map<dynamic, dynamic>> box) {
-    final raw = box.get(widget.diziId);
-    if (raw is! Map) return;
-    final dizi = Map<String, dynamic>.from(raw);
-    final pref = (dizi['grid_max_extent'] as num?)?.toDouble();
+    final record = _readRecord(box);
+    if (record == null) return;
+    final pref = (record.payload['grid_max_extent'] as num?)?.toDouble();
     if (pref != null && pref > 80 && pref < 420) {
       setState(() {
         _maxExtent = pref;
@@ -68,26 +72,55 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
     }
   }
 
+  FinixRecord? _readRecord(Box<Map<dynamic, dynamic>> box) {
+    final raw = box.get(widget.diziId);
+    if (raw is! Map) return null;
+    final record = FinixDataService.decode(
+      raw,
+      module: 'kart_dizileri',
+    );
+    if (!FinixDataService.isRecord(raw)) {
+      unawaited(box.put(widget.diziId, record.toMap()));
+    }
+    _ownerId ??= record.studentId;
+    _recordCreatedAt ??= record.createdAt;
+    return record;
+  }
+
   Future<void> _saveGridPrefs() async {
     final box = await _boxFuture;
-    final raw = box.get(widget.diziId);
-    if (raw is! Map) return;
-    final dizi = Map<String, dynamic>.from(raw);
-    await box.put(widget.diziId, {
-      ...dizi,
-      'grid_max_extent': _maxExtent,
-    });
+    final record = _readRecord(box);
+    if (record == null) return;
+    final updatedPayload = Map<String, dynamic>.from(record.payload)
+      ..['grid_max_extent'] = _maxExtent;
+    final updated = record.copyWith(
+      studentId: _ownerId,
+      payload: updatedPayload,
+      createdAt: _recordCreatedAt ?? record.createdAt,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await box.put(widget.diziId, updated.toMap());
   }
 
   Future<void> _yeniKartEkle() async {
     final box = await _boxFuture;
-    final raw = box.get(widget.diziId);
-    if (raw is! Map) return;
-    final dizi = Map<String, dynamic>.from(raw);
-    final List kartlar = List.from(dizi['kartlar'] ?? []);
+    final record = _readRecord(box);
+    if (record == null) return;
+    final dizi = Map<String, dynamic>.from(record.payload);
+    final List kartlar = List<Map<String, dynamic>>.from(
+      (dizi['kartlar'] as List? ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>)),
+    );
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     kartlar.add({'id': id, 'foto': null, 'ses': null, 'metin': ''});
-    await box.put(widget.diziId, {...dizi, 'kartlar': kartlar});
+    dizi['kartlar'] = kartlar;
+    final updated = record.copyWith(
+      studentId: _ownerId,
+      payload: dizi,
+      createdAt: _recordCreatedAt ?? record.createdAt,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await box.put(widget.diziId, updated.toMap());
     setState(() {});
   }
 
@@ -113,13 +146,23 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
 
   Future<void> _guncelleKart(Map<String, dynamic> kart) async {
     final box = await _boxFuture;
-    final raw = box.get(widget.diziId);
-    if (raw is! Map) return;
-    final dizi = Map<String, dynamic>.from(raw);
-    final List kartlar = List.from(dizi['kartlar'] ?? []);
+    final record = _readRecord(box);
+    if (record == null) return;
+    final dizi = Map<String, dynamic>.from(record.payload);
+    final List kartlar = List<Map<String, dynamic>>.from(
+      (dizi['kartlar'] as List? ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>)),
+    );
     final index = kartlar.indexWhere((k) => k['id'] == kart['id']);
     if (index != -1) kartlar[index] = kart;
-    await box.put(widget.diziId, {...dizi, 'kartlar': kartlar});
+    dizi['kartlar'] = kartlar;
+    final updated = record.copyWith(
+      studentId: _ownerId,
+      payload: dizi,
+      createdAt: _recordCreatedAt ?? record.createdAt,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await box.put(widget.diziId, updated.toMap());
     setState(() {});
   }
 
@@ -311,8 +354,23 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
               );
             }
 
-            final dizi = Map<String, dynamic>.from(raw);
-            final List kartlar = List.from(dizi['kartlar'] ?? []);
+            final record = FinixDataService.decode(
+              raw,
+              module: 'kart_dizileri',
+            );
+            if (!FinixDataService.isRecord(raw)) {
+              unawaited(box.put(widget.diziId, record.toMap()));
+            }
+            _ownerId ??= record.studentId;
+            _recordCreatedAt ??= record.createdAt;
+
+            final dizi = Map<String, dynamic>.from(record.payload);
+            final List<Map<String, dynamic>> kartlar =
+                List<Map<String, dynamic>>.from(
+              (dizi['kartlar'] as List? ?? const [])
+                  .map((e) =>
+                      Map<String, dynamic>.from(e as Map<dynamic, dynamic>)),
+            );
 
             return Scaffold(
               appBar: AppBar(

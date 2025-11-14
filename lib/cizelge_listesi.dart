@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +8,7 @@ import 'app_state/current_student.dart';
 import 'cizelge_detay_resimli_sesli_sayfasi.dart';
 import 'cizelge_detay_sayfasi.dart';
 import 'cizelge_ekle_sayfasi.dart';
+import 'services/finix_data_service.dart';
 
 String _normalizeType(dynamic raw) {
   final s = (raw ?? '').toString().toLowerCase().trim();
@@ -58,7 +61,15 @@ class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
     for (final key in box.keys) {
       final raw = box.get(key);
       if (raw is! Map) continue;
-      final ownerId = (raw['studentId'] as String?)?.trim();
+      final record = FinixDataService.decode(
+        raw,
+        module: 'cizelge',
+        fallbackStudentId: currentStudentId,
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        unawaited(box.put(key, record.toMap()));
+      }
+      final ownerId = record.studentId?.trim();
       if (_matchesStudent(ownerId, currentStudentId)) {
         keysToDelete.add(key);
       }
@@ -132,20 +143,27 @@ class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
           return ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
             valueListenable: box.listenable(),
             builder: (context, _, __) {
-              final entries = <MapEntry<dynamic, Map<String, dynamic>>>[];
+              final entries = <MapEntry<dynamic, FinixRecord>>[];
               for (final key in box.keys) {
                 final raw = box.get(key);
                 if (raw is! Map) continue;
-                final normalized = Map<String, dynamic>.from(raw);
-                final ownerId = (normalized['studentId'] as String?)?.trim();
+                final record = FinixDataService.decode(
+                  raw,
+                  module: 'cizelge',
+                  fallbackStudentId: currentStudentId,
+                );
+                if (!FinixDataService.isRecord(raw)) {
+                  unawaited(box.put(key, record.toMap()));
+                }
+                final ownerId = record.studentId?.trim();
                 if (!_matchesStudent(ownerId, currentStudentId)) continue;
 
-                entries.add(MapEntry(key, normalized));
+                entries.add(MapEntry(key, record));
               }
 
               entries.sort((a, b) {
-                final at = (a.value['createdAt'] as int?) ?? 0;
-                final bt = (b.value['createdAt'] as int?) ?? 0;
+                final at = a.value.createdAt;
+                final bt = b.value.createdAt;
                 return bt.compareTo(at);
               });
 
@@ -167,7 +185,7 @@ class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (_, i) {
                   final entry = entries[i];
-                  final map = entry.value;
+                  final map = Map<String, dynamic>.from(entry.value.payload);
 
                   final tur = _normalizeType(map['tur'] ?? map['type']);
                   final ad = (map['ad'] ??

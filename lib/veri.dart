@@ -3,6 +3,7 @@ import 'package:hive/hive.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state/current_student.dart';
+import 'services/finix_data_service.dart';
 
 class VeriSayfasi extends StatefulWidget {
   const VeriSayfasi({super.key});
@@ -58,7 +59,15 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
       'isActive': true, // listeye düşsün; bitirince false yapılacak
     };
 
-    await box.add(kayit);
+    final record = FinixDataService.buildRecord(
+      module: 'program_bilgileri',
+      payload: kayit,
+      studentId: currentId,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await box.add(record.toMap());
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
