@@ -56,6 +56,7 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
       'genellemeSayisi': gen,
       'createdAt': now,
       'isActive': true, // listeye düşsün; bitirince false yapılacak
+      'studentId': currentId,
     };
 
     await box.add(kayit);

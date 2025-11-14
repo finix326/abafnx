@@ -15,10 +15,14 @@ class Student extends HiveObject {
   @HiveField(3)
   final String? not;
 
+  @HiveField(4)
+  final String studentId;
+
   Student({
     required this.id,
     required this.ad,
     this.veliAd,
     this.not,
-  });
+    String? studentId,
+  }) : studentId = studentId ?? id;
 }

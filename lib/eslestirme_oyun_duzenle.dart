@@ -4,6 +4,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+
+import 'app_state/current_student.dart';
+import 'data/finix_data_service.dart';
 
 /// HIVE kutusu: es_game_box
 /// - '_games' : [ {id, title, createdAt}, ... ]
@@ -25,6 +29,9 @@ class _EslestirmeOyunDuzenlePageState extends State<EslestirmeOyunDuzenlePage> {
   /// Kaydetme trafiğini azaltmak için debounce
   Timer? _saveDebounce;
 
+  final FinixDataService _dataService = FinixDataService.instance;
+  static const String _matchingModule = 'matching_game';
+
   @override
   void initState() {
     super.initState();
@@ -45,6 +52,7 @@ class _EslestirmeOyunDuzenlePageState extends State<EslestirmeOyunDuzenlePage> {
     final raw = _box.get('game_${widget.gameId}');
     final gm = (raw is Map) ? Map<String, dynamic>.from(_asStrMap(raw)) : <String, dynamic>{};
     gm['title'] = (gm['title'] ?? 'Yeni Eşleştirme').toString();
+    gm['studentId'] = (gm['studentId'] ?? '').toString();
 
     final pairsRaw = gm['pairs'];
     final pairs = <Map<String, dynamic>>[];
@@ -73,11 +81,67 @@ class _EslestirmeOyunDuzenlePageState extends State<EslestirmeOyunDuzenlePage> {
   }
 
   Future<void> _saveNow() async {
+    final title = _titleCtrl.text.trim().isEmpty
+        ? (_game['title'] ?? 'Eşleştirme').toString()
+        : _titleCtrl.text.trim();
+    final pairs = List<Map<String, dynamic>>.from(
+      (_game['pairs'] as List).map((e) => Map<String, dynamic>.from(e)),
+    );
+    var studentId = (_game['studentId'] ?? '').toString();
+    if (studentId.isEmpty) {
+      final current = context.read<CurrentStudent>().currentId;
+      if (current != null) {
+        studentId = current;
+      }
+    }
+
     final data = {
-      'title': _titleCtrl.text.trim().isEmpty ? (_game['title'] ?? 'Eşleştirme') : _titleCtrl.text.trim(),
-      'pairs': List<Map<String, dynamic>>.from((_game['pairs'] as List).map((e) => Map<String, dynamic>.from(e))),
+      'title': title,
+      'pairs': pairs,
+      'studentId': studentId,
     };
+
+    _game['title'] = title;
+    _game['pairs'] = pairs;
+    _game['studentId'] = studentId;
+
     await _box.put('game_${widget.gameId}', data);
+
+    if (studentId.isEmpty) {
+      return;
+    }
+
+    final existing = _dataService.get(
+      studentId: studentId,
+      module: _matchingModule,
+      entityId: widget.gameId.toString(),
+    );
+
+    final payload = Map<String, dynamic>.from(existing?.payload ?? {});
+    payload['pairCount'] = pairs.length;
+    payload['imagePairs'] = pairs
+        .where((pair) =>
+            (pair['leftType'] ?? '') == 'image' ||
+            (pair['rightType'] ?? '') == 'image')
+        .length;
+    payload.putIfAbsent('source', () => 'manual');
+
+    final record = existing ??
+        _dataService.buildRecord(
+          studentId: studentId,
+          module: _matchingModule,
+          entityId: widget.gameId.toString(),
+          title: title,
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+          payload: payload,
+        );
+
+    await _dataService.upsert(
+      record.copyWith(
+        title: title,
+        payload: payload,
+      ),
+    );
   }
 
   Future<void> _addTextText() async {

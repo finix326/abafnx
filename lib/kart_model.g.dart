@@ -1,42 +1,42 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'student.dart';
+part of 'kart_model.dart';
 
 // **************************************************************************
 // TypeAdapterGenerator
 // **************************************************************************
 
-class StudentAdapter extends TypeAdapter<Student> {
+class KartModelAdapter extends TypeAdapter<KartModel> {
   @override
-  final int typeId = 100;
+  final int typeId = 15;
 
   @override
-  Student read(BinaryReader reader) {
+  KartModel read(BinaryReader reader) {
     final numOfFields = reader.readByte();
     final fields = <int, dynamic>{
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
-    return Student(
+    return KartModel(
       id: fields[0] as String,
-      ad: fields[1] as String,
-      veliAd: fields[2] as String?,
-      not: fields[3] as String?,
-      studentId: (fields[4] as String?) ?? fields[0] as String,
+      baslik: fields[1] as String,
+      resimYolu: fields[2] as String?,
+      sesYolu: fields[3] as String?,
+      studentId: (fields[4] as String?) ?? '',
     );
   }
 
   @override
-  void write(BinaryWriter writer, Student obj) {
+  void write(BinaryWriter writer, KartModel obj) {
     writer
       ..writeByte(5)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
-      ..write(obj.ad)
+      ..write(obj.baslik)
       ..writeByte(2)
-      ..write(obj.veliAd)
+      ..write(obj.resimYolu)
       ..writeByte(3)
-      ..write(obj.not)
+      ..write(obj.sesYolu)
       ..writeByte(4)
       ..write(obj.studentId);
   }
@@ -47,7 +47,7 @@ class StudentAdapter extends TypeAdapter<Student> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is StudentAdapter &&
+      other is KartModelAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

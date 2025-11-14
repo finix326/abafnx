@@ -10,11 +10,13 @@ import 'package:permission_handler/permission_handler.dart';
 class KartDetaySayfasi extends StatefulWidget {
   final String diziId;
   final String diziAdi;
+  final String studentId;
 
   const KartDetaySayfasi({
     super.key,
     required this.diziId,
     required this.diziAdi,
+    required this.studentId,
   });
 
   @override
@@ -36,9 +38,22 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
   @override
   void initState() {
     super.initState();
-    _box = Hive.box('kart_dizileri');
+    _box = Hive.box('kart_dizileri_${widget.studentId}');
+    _ensureOwnership();
     _loadGridPrefs();
     _initAudio();
+  }
+
+  void _ensureOwnership() {
+    final existing = _box.get(widget.diziId);
+    if (existing is Map) {
+      final data = Map<String, dynamic>.from(existing);
+      final sid = (data['studentId'] ?? '').toString();
+      if (sid.isEmpty) {
+        data['studentId'] = widget.studentId;
+        _box.put(widget.diziId, data);
+      }
+    }
   }
 
   Future<void> _initAudio() async {
@@ -73,8 +88,19 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
     final dizi = Map<String, dynamic>.from(_box.get(widget.diziId));
     final List kartlar = List.from(dizi['kartlar'] ?? []);
     final id = DateTime.now().millisecondsSinceEpoch.toString();
-    kartlar.add({'id': id, 'foto': null, 'ses': null, 'metin': ''});
-    await _box.put(widget.diziId, {...dizi, 'kartlar': kartlar});
+    kartlar.add({
+      'id': id,
+      'foto': null,
+      'ses': null,
+      'metin': '',
+      'studentId': widget.studentId,
+    });
+    await _box.put(widget.diziId, {
+      ...dizi,
+      'kartlar': kartlar,
+      'studentId': widget.studentId,
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    });
     setState(() {});
   }
 
@@ -103,7 +129,12 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
     final List kartlar = List.from(dizi['kartlar'] ?? []);
     final index = kartlar.indexWhere((k) => k['id'] == kart['id']);
     if (index != -1) kartlar[index] = kart;
-    await _box.put(widget.diziId, {...dizi, 'kartlar': kartlar});
+    await _box.put(widget.diziId, {
+      ...dizi,
+      'kartlar': kartlar,
+      'studentId': widget.studentId,
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    });
     setState(() {});
   }
 

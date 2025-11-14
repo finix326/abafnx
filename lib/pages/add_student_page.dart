@@ -35,6 +35,7 @@ class _AddStudentPageState extends State<AddStudentPage> {
       ad: _ad.text.trim(),
       veliAd: _veli.text.trim().isEmpty ? null : _veli.text.trim(),
       not: _not.text.trim().isEmpty ? null : _not.text.trim(),
+      studentId: id,
     );
 
     final students = Hive.box<Student>('students');

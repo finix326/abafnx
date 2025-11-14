@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../data/finix_data_service.dart';
+
 class CurrentStudent extends ChangeNotifier {
   static const _prefsBox = 'app_prefs';
   static const _key = 'currentStudentId';
@@ -27,5 +29,7 @@ class CurrentStudent extends ChangeNotifier {
 }
 
 // Öğrenciye özel kutu adlarını üretmek için yardımcılar
-String programBoxName(String studentId) => 'program_bilgileri_$studentId';
-String cizelgeBoxName(String studentId) => 'cizelge_$studentId';
+String programBoxName(String studentId) =>
+    FinixDataService.scopedBox('program_bilgileri', studentId);
+String cizelgeBoxName(String studentId) =>
+    FinixDataService.scopedBox('cizelge_kutusu', studentId);

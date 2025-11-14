@@ -48,37 +48,28 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
     };
   }
 
-  Future<Box> _openProgramBox(String studentId) async {
-    try {
-      final studentBox = await Hive.openBox('program_bilgileri_$studentId');
-      try {
-        final defaultBox = await Hive.openBox('program_bilgileri');
-        if (studentBox.isEmpty && defaultBox.isNotEmpty) return defaultBox;
-      } catch (_) {}
-      return studentBox;
-    } catch (_) {
-      return Hive.openBox('program_bilgileri');
-    }
-  }
+  Future<Box> _openProgramBox(String studentId) async =>
+      Hive.openBox('program_bilgileri_$studentId');
 
   void _maybeAutoNavigate(
-      BuildContext context,
-      List<MapEntry<dynamic, Map<String, dynamic>>> entries,
-      ) {
+    BuildContext context,
+    List<_ProgramRecord> entries,
+  ) {
     if (_didAutoSelect) return;
     if (entries.isEmpty) return;
 
     // initialProgramKey öncelikli
     if (widget.initialProgramKey != null) {
-      final found = entries.where((e) => e.key.toString() == widget.initialProgramKey).toList();
+      final found =
+          entries.where((e) => e.key.toString() == widget.initialProgramKey).toList();
       if (found.isNotEmpty) _autoSelectKey = found.first.key.toString();
     }
     // tek kayıt varsa onu seç
     _autoSelectKey ??= entries.length == 1 ? entries.first.key.toString() : null;
     // yoksa en son oluşturulanı seç
     _autoSelectKey ??= (entries
-      ..sort((a, b) =>
-          (a.value['createdAt'] as int).compareTo((b.value['createdAt'] as int))))
+          ..sort((a, b) => (a.value['createdAt'] as int)
+              .compareTo((b.value['createdAt'] as int))))
         .last
         .key
         .toString();
@@ -126,29 +117,41 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
           );
         }
         final progBox = progSnap.data!;
-        final entries = <MapEntry<dynamic, Map<String, dynamic>>>[];
+        final entries = <_ProgramRecord>[];
 
         for (final k in progBox.keys) {
           final v = progBox.get(k);
           if (v == null) continue;
-          entries.add(MapEntry(k, _normalizeProgram(v)));
+          final normalized = _normalizeProgram(v);
+          final studentId = v is Map ? v['studentId']?.toString() : null;
+          entries.add(
+            _ProgramRecord(
+              key: k,
+              value: normalized,
+              studentId: studentId,
+            ),
+          );
         }
-        entries.sort((a, b) => (a.value['programAdi'] ?? '')
+
+        final filteredEntries =
+            entries.where((e) => e.studentId == currentId).toList();
+
+        filteredEntries.sort((a, b) => (a.value['programAdi'] ?? '')
             .toString()
             .compareTo((b.value['programAdi'] ?? '').toString()));
 
         // Otomatik yönlendirme (isteğe bağlı)
-        _maybeAutoNavigate(context, entries);
+        _maybeAutoNavigate(context, filteredEntries);
 
         return Scaffold(
           appBar: AppBar(title: const Text('Programlar')),
-          body: entries.isEmpty
+          body: filteredEntries.isEmpty
               ? const Center(child: Text('Henüz program yok.'))
               : ListView.separated(
-            itemCount: entries.length,
+            itemCount: filteredEntries.length,
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (_, i) {
-              final e = entries[i];
+              final e = filteredEntries[i];
               final ad = (e.value['programAdi'] ?? e.key).toString();
               final t = (e.value['tekrarSayisi'] as int?) ?? 0;
               final g = (e.value['genellemeSayisi'] as int?) ?? 0;
@@ -219,7 +222,8 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
 
   Future<void> _prepareBoxAndLoadForDate() async {
     final currentId = context.read<CurrentStudent>().currentId;
-    final boxName = currentId != null ? 'veri_kutusu_$currentId' : 'veri_kutusu';
+    if (currentId == null) return;
+    final boxName = 'veri_kutusu_$currentId';
     _veriBox ??= await Hive.openBox(boxName);
     await _loadToday();
   }
@@ -275,6 +279,8 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
 
   Future<void> _saveToday() async {
     if (_veriBox == null) return;
+    final currentId = context.read<CurrentStudent>().currentId;
+    if (currentId == null) return;
 
     final now = DateTime.now();
     final rec = {
@@ -294,6 +300,7 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
       // uyumluluk için sayısal özet:
       'tekrarSayisi': _tekrarFlags.where((e) => e).length,
       'genellemeSayisi': _genellemeFlags.where((e) => e).length,
+      'studentId': currentId,
     };
     await _veriBox!.add(rec);
 
@@ -466,6 +473,18 @@ class _SeriesData {
       : dates = const [],
         tekrarByDate = const {},
         genellemeByDate = const {};
+}
+
+class _ProgramRecord {
+  final dynamic key;
+  final Map<String, dynamic> value;
+  final String? studentId;
+
+  const _ProgramRecord({
+    required this.key,
+    required this.value,
+    required this.studentId,
+  });
 }
 
 /// Çizgi grafik kartı – fl_chart ile iki seri (Tekrar & Genelleme)

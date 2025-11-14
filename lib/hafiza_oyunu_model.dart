@@ -2,6 +2,7 @@
 
 class HafizaOyunu {
   final String id;
+  final String studentId;
   String title;
   int pairCount; // kaç çift
   List<String> imagePaths; // her görsel 1 kez, oyun başlarken çiftlenir
@@ -9,6 +10,7 @@ class HafizaOyunu {
 
   HafizaOyunu({
     required this.id,
+    required this.studentId,
     required this.title,
     required this.pairCount,
     required this.imagePaths,
@@ -18,6 +20,7 @@ class HafizaOyunu {
   factory HafizaOyunu.fromMap(String id, Map<dynamic, dynamic> map) {
     return HafizaOyunu(
       id: id,
+      studentId: (map['studentId'] ?? '').toString(),
       title: (map['title'] ?? 'Yeni Hafıza Oyunu').toString(),
       pairCount: (map['pairCount'] as int?) ?? 2,
       imagePaths:
@@ -29,6 +32,7 @@ class HafizaOyunu {
 
   Map<String, dynamic> toMap() {
     return {
+      'studentId': studentId,
       'title': title,
       'pairCount': pairCount,
       'imagePaths': imagePaths,

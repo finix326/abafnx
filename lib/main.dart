@@ -7,8 +7,12 @@ import 'ai/ai_engine.dart';
 // STATE
 import 'app_state/current_student.dart';
 
+// DATA
+import 'data/finix_data_service.dart';
+
 // MODEL
 import 'student.dart';
+import 'kart_model.dart';
 
 // WIDGETS
 import 'widgets/student_picker_sheet.dart';
@@ -39,40 +43,80 @@ import 'eslestirme_oyun_listesi.dart';
 // DÜZELTİLDİ: Eksik import eklendi
 import 'hafiza_oyunu_listesi_sayfasi.dart';
 
+Future<void> _openGlobalHiveBoxes() async {
+  const globalBoxes = <String>{
+    'veri_kutusu',
+    'program_bilgileri',
+    'cizelge_kutusu',
+    'bep_raporlari',
+    'sohbet_kutusu',
+    'es_game_box',
+    'kart_dizileri',
+    'hafiza_oyunlari',
+  };
+
+  for (final name in globalBoxes) {
+    if (!Hive.isBoxOpen(name)) {
+      await Hive.openBox(name);
+    }
+  }
+}
+
+Future<void> _openStudentScopedBoxes(String studentId) async {
+  const scopedBases = <String>{
+    'veri_kutusu',
+    'program_bilgileri',
+    'cizelge_kutusu',
+    'bep_raporlari',
+    'sohbet_kutusu',
+    'es_game_box',
+    'kart_dizileri',
+    'hafiza_oyunlari',
+  };
+
+  for (final base in scopedBases) {
+    final boxName = FinixDataService.scopedBox(base, studentId);
+    if (!Hive.isBoxOpen(boxName)) {
+      await Hive.openBox(boxName);
+    }
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 🔹 Yapay zekâ motorunu başlat (Gemini)
-  // DÜZELTİLDİ: Fonksiyon çağrısı syntax hatası giderildi.
-  AIEngine.init('AIzaSyBpZFzWz5cdTaGiM07Chb1G_-fUUGOSYWQ'); // TODO: Burayı kendi Gemini API anahtarınla değiştir
-
   final appDocDir = await getApplicationDocumentsDirectory();
   await Hive.initFlutter(appDocDir.path);
 
-  // Eski kutular (geri uyumluluk)
-  await Hive.openBox('veri_kutusu');
-  await Hive.openBox('program_bilgileri');
-  await Hive.openBox('cizelge_kutusu');
-  await Hive.openBox('bep_raporlari');
-  await Hive.openBox('sohbet_kutusu');
+  await _openGlobalHiveBoxes();
 
-  // ✅ Yeni: Eşleştirme oyunları için kutu
-  await Hive.openBox('es_game_box');
-
-  // ✅ Kartlar için kutu
-  await Hive.openBox('kart_dizileri');
-
-  await Hive.openBox('hafiza_oyunlari');
+  // Ortak Finix kayıt kutusu
+  await FinixDataService.instance.init();
 
   // Öğrenciler
   if (!Hive.isAdapterRegistered(100)) {
     Hive.registerAdapter(StudentAdapter());
   }
+  if (!Hive.isAdapterRegistered(15)) {
+    Hive.registerAdapter(KartModelAdapter());
+  }
   await Hive.openBox<Student>('students');
 
   await Hive.openBox('auth');
 
+  // 🔹 Yapay zekâ motorunu başlat (Gemini)
+  // TODO: Burayı kendi Gemini API anahtarınla değiştir.
+  AIEngine.init(
+    apiKey: 'AIzaSyBpZFzWz5cdTaGiM07Chb1G_-fUUGOSYWQ',
+    dataService: FinixDataService.instance,
+  );
+
   final current = CurrentStudent();
   await current.load();
+
+  final scopedId = current.currentId;
+  if (scopedId != null && scopedId.isNotEmpty) {
+    await _openStudentScopedBoxes(scopedId);
+  }
 
   runApp(
     ChangeNotifierProvider(
@@ -249,8 +293,24 @@ class _TerapistDrawer extends StatelessWidget {
             leading: const Icon(Icons.add_task),
             title: const Text('Çizelge Ekle'),
             onTap: () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const CizelgeEkleSayfasi(tur: 'Genel')));
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              final studentId = context.read<CurrentStudent>().currentId;
+              navigator.pop();
+              if (studentId == null) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Lütfen önce bir öğrenci seçin.')),
+                );
+                return;
+              }
+              navigator.push(
+                MaterialPageRoute(
+                  builder: (_) => CizelgeEkleSayfasi(
+                    tur: 'Genel',
+                    studentId: studentId,
+                  ),
+                ),
+              );
             },
           ),
           const Divider(height: 1),
