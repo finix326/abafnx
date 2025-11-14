@@ -1,17 +1,17 @@
-// lib/kartlar_sayfasi.dart
+// lib/kart_dizileri_sayfasi.dart
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'kart_detay_sayfasi.dart';
 
-class KartlarSayfasi extends StatefulWidget {
-  const KartlarSayfasi({super.key});
+class KartDizileriSayfasi extends StatefulWidget {
+  const KartDizileriSayfasi({super.key});
 
   @override
-  State<KartlarSayfasi> createState() => _KartlarSayfasiState();
+  State<KartDizileriSayfasi> createState() => _KartDizileriSayfasiState();
 }
 
-class _KartlarSayfasiState extends State<KartlarSayfasi> {
+class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
   late Box _box;
 
   @override
@@ -28,7 +28,7 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
         title: const Text('Yeni Kart Dizisi'),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(hintText: 'Örn: Hayvanlar'),
+          decoration: const InputDecoration(hintText: 'Örn: Renkler'),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
@@ -46,6 +46,8 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
 
   @override
   Widget build(BuildContext context) {
+    final keys = _box.keys.toList();
+
     return Scaffold(
       appBar: AppBar(title: const Text('Kart Dizileri')),
       floatingActionButton: FloatingActionButton(
@@ -61,23 +63,19 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
 
           final keys = box.keys.toList();
           return ListView.builder(
-            padding: const EdgeInsets.all(8),
             itemCount: keys.length,
             itemBuilder: (_, i) {
               final data = Map<String, dynamic>.from(box.get(keys[i]));
-              return Card(
-                elevation: 2,
-                child: ListTile(
-                  title: Text(data['ad'] ?? 'Adsız Dizi'),
-                  subtitle: Text('${(data['kartlar'] as List).length} kart'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => KartDetaySayfasi(
-                        diziId: data['id'],
-                        diziAdi: data['ad'],
-                      ),
+              return ListTile(
+                title: Text(data['ad'] ?? 'Adsız Dizi'),
+                subtitle: Text('${(data['kartlar'] as List).length} kart'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => KartDetaySayfasi(
+                      diziId: data['id'],
+                      diziAdi: data['ad'],
                     ),
                   ),
                 ),

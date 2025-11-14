@@ -1,110 +1,52 @@
+// lib/sohbet_page.dart
+
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-/// HIVE şema (basit Map):
-/// sohbet_kutusu:
-///   key: photoId (String, ör: 'p_169...' )
-///   value: {
-///     'title': 'Kullanıcının vereceği başlık',
-///     'path': '<appDocs>/sohbet/<photoId>.jpg',
-///     'pins': [
-///       { 'x': 0.42, 'y': 0.33, 'audio': '<appDocs>/sohbet/<photoId>_<ts>.aac', 'ts': 169... }
-///     ],
-///     'createdAt': millis
-///   }
-///
-/// Not: x,y [0..1] oransal; cihaz boyutu değişse de doğru yerde görünür.
+// Ana Sayfa: Sohbet listesini gösterir.
+class SohbetHomePage extends StatefulWidget {
+  const SohbetHomePage({super.key});
 
-class SohbetPage extends StatefulWidget {
-  const SohbetPage({super.key});
   @override
-  State<SohbetPage> createState() => _SohbetPageState();
+  State<SohbetHomePage> createState() => _SohbetHomePageState();
 }
 
-class _SohbetPageState extends State<SohbetPage> {
-  late Box _box;
-  List<Map<String, dynamic>> _sohbetList = [];
-  Map<String, dynamic>? _sohbet;
+class _SohbetHomePageState extends State<SohbetHomePage> {
+  late final Box _box;
 
   @override
   void initState() {
     super.initState();
     _box = Hive.box('sohbet_kutusu');
-    _refreshSohbetList();
   }
 
-  void _refreshSohbetList() {
-    // Sohbetler: her biri bir sohbet sayfası, id, createdAt, photos:[]
-    // V1: sohbetler kutuya _sohbetler anahtarında tutulacak
-    final raw = _box.get('_sohbetler') as List?;
-    _sohbetList = (raw ?? []).map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
-    // Sona eklenen en üstte
-    _sohbetList.sort((a, b) => (b['createdAt'] as int).compareTo(a['createdAt'] as int));
-  }
-
-  Future<void> _createNewSohbet() async {
-    final id = DateTime.now().millisecondsSinceEpoch;
-    final yeni = {
-      'id': id,
-      'createdAt': id,
+  Future<void> _addSohbet() async {
+    final newId = DateTime.now().millisecondsSinceEpoch.toString();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await _box.put(newId, {
       'title': 'Yeni Sohbet',
       'photos': <String>[],
-    };
-    final list = List<Map<String, dynamic>>.from(_box.get('_sohbetler') as List? ?? []);
-    list.add(yeni);
-    await _box.put('_sohbetler', list);
-    if (mounted) setState(() {
-      _refreshSohbetList();
+      'createdAt': now,
     });
-  }
-
-
-  Future<void> _deleteSohbet(int sohbetId) async {
-    // Sohbetin tüm fotoğraflarını da sil
-    final sohbet = _sohbetList.firstWhere((e) => e['id'] == sohbetId, orElse: () => <String, dynamic>{});
-    if (sohbet.isNotEmpty) {
-      final List photos = sohbet['photos'] ?? [];
-      for (final pid in photos) {
-        final m = (_box.get(pid) as Map?) ?? {};
-        final pins = (m['pins'] as List?)?.cast<Map>() ?? [];
-        for (final p in pins) {
-          final a = (p['audio'] ?? '').toString();
-          if (a.isNotEmpty && File(a).existsSync()) {
-            try { File(a).deleteSync(); } catch (_) {}
-          }
-        }
-        final path = (m['path'] ?? '').toString();
-        if (path.isNotEmpty && File(path).existsSync()) {
-          try { File(path).deleteSync(); } catch (_) {}
-        }
-        await _box.delete(pid);
-      }
-    }
-    // Sohbeti listeden sil
-    final list = List<Map<String, dynamic>>.from(_box.get('_sohbetler') as List? ?? []);
-    list.removeWhere((e) => e['id'] == sohbetId);
-    await _box.put('_sohbetler', list);
-    if (mounted) setState(() {
-      _refreshSohbetList();
-    });
-  }
-
-
-  Future<void> _renameSohbet(int sohbetId) async {
-    final raw = _box.get('_sohbetler') as List? ?? [];
-    final list = List<Map<String, dynamic>>.from(
-      raw.map((e) => Map<String, dynamic>.from(e)),
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SohbetPage(sohbetId: newId),
+      ),
     );
-    final idx = list.indexWhere((e) => e['id'] == sohbetId);
-    if (idx < 0) return;
+  }
 
-    final currentTitle = (list[idx]['title'] ?? 'Sohbet #$sohbetId').toString();
+  Future<void> _renameSohbet(String sohbetId) async {
+    final data = (_box.get(sohbetId) as Map?) ?? {};
+    final currentTitle = (data['title'] ?? 'İsimsiz Sohbet').toString();
     final controller = TextEditingController(text: currentTitle);
 
     final newTitle = await showDialog<String>(
@@ -133,124 +75,197 @@ class _SohbetPageState extends State<SohbetPage> {
     );
 
     if (newTitle == null) return;
-    list[idx]['title'] = newTitle.isEmpty ? currentTitle : newTitle;
-    await _box.put('_sohbetler', list);
+    data['title'] = newTitle.isEmpty ? currentTitle : newTitle;
+    await _box.put(sohbetId, data);
+  }
 
-    if (!mounted) return;
-    setState(() {
-      if (_sohbet != null && (_sohbet!['id'] as int?) == sohbetId) {
-        _sohbet!['title'] = list[idx]['title'];
+  Future<void> _deleteSohbet(String sohbetId) async {
+    final data = (_box.get(sohbetId) as Map?) ?? {};
+    final photos = (data['photos'] as List?)?.cast<String>() ?? <String>[];
+
+    // Önce fotoğraf kayıtlarını ve dosyalarını sil
+    for (final pid in photos) {
+      final p = (_box.get(pid) as Map?) ?? {};
+      final imgPath = (p['path'] ?? '').toString();
+      if (imgPath.isNotEmpty && File(imgPath).existsSync()) {
+        try {
+          File(imgPath).deleteSync();
+        } catch (_) {}
       }
-    });
+      final regions = (p['regions'] as List?)?.cast<Map>() ?? <Map>[];
+      for (final r in regions) {
+        final audioPath = (r['audio'] ?? '').toString();
+        if (audioPath.isNotEmpty && File(audioPath).existsSync()) {
+          try {
+            File(audioPath).deleteSync();
+          } catch (_) {}
+        }
+      }
+      await _box.delete(pid);
+    }
+
+    // Sonra sohbet kaydını sil
+    await _box.delete(sohbetId);
   }
 
   @override
   Widget build(BuildContext context) {
-    final items = _sohbetList;
     return Scaffold(
-      appBar: AppBar(title: const Text('Sohbet')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _createNewSohbet,
-        child: const Icon(Icons.add_comment),
-      ),
-      body: items.isEmpty
-          ? const Center(child: Text('Henüz sohbet sayfası yok. Sağ alttan ekleyin.'))
-          : ListView.separated(
-        padding: const EdgeInsets.all(12),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 8),
-        itemBuilder: (_, i) {
-          final sohbet = items[i];
-          final id = sohbet['id'];
-          final date = DateTime.fromMillisecondsSinceEpoch(sohbet['createdAt']);
-          final title = (sohbet['title'] ?? 'Sohbet #$id').toString();
-          return ListTile(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            tileColor: Colors.blue.shade50,
-            title: Text(title),
-            subtitle: Text('${date.day}.${date.month}.${date.year} ${date.hour}:${date.minute.toString().padLeft(2,'0')}'),
-            trailing: Icon(Icons.chevron_right),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => _SohbetEditor(sohbetId: id)),
-              ).then((_) {
-                if (mounted) setState(() {
-                  _refreshSohbetList();
-                });
-              });
-            },
-            onLongPress: () async {
-              final act = await showModalBottomSheet<String>(
-                context: context,
-                builder: (_) => SafeArea(
-                  child: Wrap(children: [
-                    ListTile(
-                      leading: const Icon(Icons.edit),
-                      title: const Text('Yeniden adlandır'),
-                      onTap: () => Navigator.pop(context, 'rename'),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.delete_outline, color: Colors.red),
-                      title: const Text('Sohbeti Sil'),
-                      onTap: () => Navigator.pop(context, 'delete'),
-                    ),
-                    const SizedBox(height: 8),
-                  ]),
+      appBar: AppBar(title: const Text('Sohbetler')),
+      body: ValueListenableBuilder<Box>(
+        valueListenable: _box.listenable(),
+        builder: (context, box, _) {
+          // Sadece 'photos' alanı olan kayıtları sohbet olarak kabul et
+          final allKeys = box.keys.toList();
+          final sohbetKeys = <dynamic>[];
+          for (final k in allKeys) {
+            final v = box.get(k);
+            if (v is Map && v.containsKey('photos')) {
+              sohbetKeys.add(k);
+            }
+          }
+          sohbetKeys.sort((a, b) => b.toString().compareTo(a.toString()));
+          if (sohbetKeys.isEmpty) {
+            return const Center(child: Text('Henüz sohbet yok.'));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            itemCount: sohbetKeys.length,
+            itemBuilder: (context, index) {
+              final key = sohbetKeys[index];
+              final data = box.get(key) as Map? ?? {};
+              final title = (data['title'] ?? 'İsimsiz Sohbet').toString();
+              final photos = (data['photos'] as List?)?.length ?? 0;
+              final createdAt = data['createdAt'] as int?;
+              String subtitle;
+              if (createdAt != null) {
+                final dt = DateTime.fromMillisecondsSinceEpoch(createdAt);
+                final dateStr =
+                    '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+                subtitle = '$dateStr · $photos fotoğraf';
+              } else {
+                subtitle = '$photos fotoğraf';
+              }
+
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.chat_bubble_outline),
+                  ),
+                  title: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(subtitle),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SohbetPage(sohbetId: key.toString()),
+                      ),
+                    );
+                  },
+                  onLongPress: () async {
+                    final act = await showModalBottomSheet<String>(
+                      context: context,
+                      builder: (_) => SafeArea(
+                        child: Wrap(
+                          children: [
+                            ListTile(
+                              leading: const Icon(Icons.edit),
+                              title: const Text('Sohbet adını düzenle'),
+                              onTap: () => Navigator.pop(context, 'rename'),
+                            ),
+                            ListTile(
+                              leading: const Icon(Icons.delete_outline, color: Colors.red),
+                              title: const Text('Sohbeti sil'),
+                              onTap: () => Navigator.pop(context, 'delete'),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                      ),
+                    );
+                    if (act == 'rename') {
+                      await _renameSohbet(key.toString());
+                    } else if (act == 'delete') {
+                      await _deleteSohbet(key.toString());
+                    }
+                  },
                 ),
               );
-              if (act == 'delete') _deleteSohbet(id);
-              if (act == 'rename') _renameSohbet(id);
             },
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _addSohbet,
+        child: const Icon(Icons.add),
       ),
     );
   }
 }
 
+// Sohbet Detay Sayfası: Artık doğrudan yeni PageView'i çağırıyor.
+class SohbetPage extends StatelessWidget {
+  final String sohbetId;
+  const SohbetPage({super.key, required this.sohbetId});
 
-/// Sohbet düzenleyici: foto ekle/sil, fotoğrafa tıkla ve pin mantığı
-class _SohbetEditor extends StatefulWidget {
-  final int sohbetId;
-  const _SohbetEditor({required this.sohbetId});
   @override
-  State<_SohbetEditor> createState() => _SohbetEditorState();
+  Widget build(BuildContext context) {
+    return _SohbetViewer(sohbetId: sohbetId);
+  }
 }
 
-class _SohbetEditorState extends State<_SohbetEditor> {
-  late Box _box;
-  Map<String, dynamic>? _sohbet;
-  List<String> _photos = [];
-  // Her fotoğraf kutusunun ekranda kapladığı oran (kalıcı)
-  final Map<String, double> _boxScale = {}; // photoId -> scale
-  String? _scalingId; // aktif ölçeklenen foto
-  double? _pinchStartScale; // geçici: pinch başlangıç ölçeği
-  final Duration _resizeAnim = const Duration(milliseconds: 120);
+// YENİ: Sayfalamayı ve global AppBar'ı yöneten ana widget
+class _SohbetViewer extends StatefulWidget {
+  final String sohbetId;
+  const _SohbetViewer({required this.sohbetId});
+
+  @override
+  State<_SohbetViewer> createState() => _SohbetViewerState();
+}
+
+class _SohbetViewerState extends State<_SohbetViewer> {
+  late final Box _box;
+  final PageController _pageController = PageController();
+  List<String> _photoIds = [];
+  int _currentPageIndex = 0;
+  bool _editMode = false;
+  bool _selectMode = false;
+
+  // Aktif sayfayı (PhotoViewerPage) dışarıdan kontrol etmek için anahtarlar
+  final List<GlobalKey<_PhotoViewerPageState>> _pageKeys = [];
 
   @override
   void initState() {
     super.initState();
     _box = Hive.box('sohbet_kutusu');
-    _refresh();
+    _loadPhotos();
   }
 
-  void _refresh() {
-    final raw = _box.get('_sohbetler') as List?;
-    final list = (raw ?? []).map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
-    final found = list.firstWhere((e) => e['id'] == widget.sohbetId, orElse: () => <String, dynamic>{});
-    _sohbet = found.isEmpty ? null : found;
-    _photos = List<String>.from(_sohbet?['photos'] ?? []);
-    // boxScale değerlerini oku
-    _boxScale.clear();
-    for (final pid in _photos) {
-      final m = (_box.get(pid) as Map?) ?? {};
-      final s = (m['boxScale'] as num?)?.toDouble() ?? 1.0;
-      _boxScale[pid] = s.clamp(0.5, 3.0);
-      // pinch başlangıcı sıfırla
-      _pinchStartScale = null;
+  void _loadPhotos() {
+    final sohbetData = _box.get(widget.sohbetId) as Map? ?? {};
+    _photoIds = (sohbetData['photos'] as List?)?.cast<String>() ?? [];
+    _pageKeys.clear();
+    for (var _ in _photoIds) {
+      _pageKeys.add(GlobalKey<_PhotoViewerPageState>());
     }
     setState(() {});
+  }
+
+  // Aktif sayfanın state'ini almak için yardımcı fonksiyon
+  _PhotoViewerPageState? get _currentPageState {
+    if (_currentPageIndex < _pageKeys.length) {
+      return _pageKeys[_currentPageIndex].currentState;
+    }
+    return null;
   }
 
   Future<void> _addPhoto() async {
@@ -258,298 +273,177 @@ class _SohbetEditorState extends State<_SohbetEditor> {
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
 
-    final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}/sohbet');
-    if (!dir.existsSync()) dir.createSync(recursive: true);
+    final docsDir = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docsDir.path}/sohbet_fotolar');
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
 
     final photoId = 'p_${DateTime.now().millisecondsSinceEpoch}';
-    final ext = picked.path.split('.').last.toLowerCase();
-    final target = File('${dir.path}/$photoId.$ext');
-    await File(picked.path).copy(target.path);
+    final ext = picked.path.split('.').last;
+    final targetFile = File('${dir.path}/$photoId.$ext');
+    await File(picked.path).copy(targetFile.path);
 
+    // Fotoğraf kaydını kutuya yaz
     await _box.put(photoId, {
-      'path': target.path,
-      'pins': <Map<String, dynamic>>[],
+      'path': targetFile.path,
+      'regions': <Map<String, dynamic>>[],
       'createdAt': DateTime.now().millisecondsSinceEpoch,
     });
-    // Sohbete ekle
-    final raw = _box.get('_sohbetler') as List? ?? [];
-    final list = List<Map<String, dynamic>>.from(raw.map((e) => Map<String, dynamic>.from(e)));
-    final idx = list.indexWhere((e) => e['id'] == widget.sohbetId);
-    if (idx >= 0) {
-      final photos = List<String>.from(list[idx]['photos'] ?? []);
-      photos.add(photoId);
-      list[idx]['photos'] = photos;
-      await _box.put('_sohbetler', list);
+
+    // Sohbetin photos listesine bu fotoğrafı ekle
+    final raw = (_box.get(widget.sohbetId) as Map?) ?? {};
+    final photos = (raw['photos'] as List?)?.cast<String>() ?? <String>[];
+    photos.add(photoId);
+    raw['photos'] = photos;
+    await _box.put(widget.sohbetId, raw);
+
+    // Ekranı güncelle ve son sayfaya git
+    _loadPhotos();
+    if (_photoIds.isNotEmpty) {
+      final lastIndex = _photoIds.length - 1;
+      _pageController.jumpToPage(lastIndex);
+      setState(() {
+        _currentPageIndex = lastIndex;
+      });
     }
-    _refresh();
-  }
-
-  Future<void> _deletePhoto(String photoId) async {
-    final m = (_box.get(photoId) as Map?) ?? {};
-    // Ses dosyalarını da temizle
-    final pins = (m['pins'] as List?)?.cast<Map>() ?? [];
-    for (final p in pins) {
-      final a = (p['audio'] ?? '').toString();
-      if (a.isNotEmpty && File(a).existsSync()) {
-        try { File(a).deleteSync(); } catch (_) {}
-      }
-    }
-    // Fotoğrafı da sil
-    final path = (m['path'] ?? '').toString();
-    if (path.isNotEmpty && File(path).existsSync()) {
-      try { File(path).deleteSync(); } catch (_) {}
-    }
-    await _box.delete(photoId);
-    // Sohbetten çıkar
-    final raw = _box.get('_sohbetler') as List? ?? [];
-    final list = List<Map<String, dynamic>>.from(raw.map((e) => Map<String, dynamic>.from(e)));
-    final idx = list.indexWhere((e) => e['id'] == widget.sohbetId);
-    if (idx >= 0) {
-      final photos = List<String>.from(list[idx]['photos'] ?? []);
-      photos.remove(photoId);
-      list[idx]['photos'] = photos;
-      await _box.put('_sohbetler', list);
-    }
-    _boxScale.remove(photoId);
-    _refresh();
-  }
-
-  Future<void> _renameSohbet(int sohbetId) async {
-    // _sohbet listesini kutudan çek
-    final raw = _box.get('_sohbetler') as List? ?? [];
-    final list = List<Map<String, dynamic>>.from(
-      raw.map((e) => Map<String, dynamic>.from(e)),
-    );
-    final idx = list.indexWhere((e) => e['id'] == sohbetId);
-    if (idx < 0) return;
-
-    final currentTitle = (list[idx]['title'] ?? 'Sohbet #$sohbetId').toString();
-    final controller = TextEditingController(text: currentTitle);
-
-    final newTitle = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Sohbet adını düzenle'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Başlık',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('İptal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Kaydet'),
-          ),
-        ],
-      ),
-    );
-
-    if (newTitle == null) return;
-    list[idx]['title'] = newTitle.isEmpty ? currentTitle : newTitle;
-    await _box.put('_sohbetler', list);
-
-    if (!mounted) return;
-    setState(() {
-      // Yerel başlığı da güncelle
-      _sohbet ??= {};
-      _sohbet!['title'] = list[idx]['title'];
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final date = _sohbet != null ? DateTime.fromMillisecondsSinceEpoch(_sohbet!['createdAt']) : null;
     return Scaffold(
       appBar: AppBar(
-        title: Text((_sohbet?['title'] ?? 'Sohbet #${_sohbet?['id'] ?? ''}').toString()),
-        bottom: date != null
-            ? PreferredSize(
-          preferredSize: const Size.fromHeight(20),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: Text(
-              '${date!.day}.${date!.month}.${date!.year}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
-            ),
-          ),
-        )
-            : null,
+        title: Text((_box.get(widget.sohbetId) as Map? ?? {})['title'] ?? ''),
         actions: [
-          IconButton(
-            tooltip: 'Adı düzenle',
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              final id = (_sohbet?['id'] as int?);
-              if (id != null) _renameSohbet(id);
-            },
-          ),
           IconButton(
             tooltip: 'Fotoğraf ekle',
             icon: const Icon(Icons.add_a_photo),
             onPressed: _addPhoto,
           ),
+          IconButton(
+            tooltip: _editMode ? 'Bölgeleri Gizle' : 'Bölgeleri Göster',
+            icon: Icon(_editMode ? Icons.visibility_off : Icons.visibility),
+            onPressed: () {
+              setState(() => _editMode = !_editMode);
+              _currentPageState?.toggleEditMode();
+            },
+          ),
+          IconButton(
+            tooltip: _selectMode ? 'Seçim Modunu Kapat' : 'Kayıt Bölgesi Seç',
+            icon: Icon(_selectMode ? Icons.mic_off : Icons.mic),
+            onPressed: _editMode // Sadece düzenleme modu aktifken çalışsın
+                ? () {
+              setState(() => _selectMode = !_selectMode);
+              _currentPageState?.toggleSelectMode();
+            }
+                : null,
+          ),
+          IconButton(
+            tooltip: 'Kaydet',
+            icon: const Icon(Icons.save_outlined),
+            onPressed: () => _currentPageState?.saveAll(),
+          ),
         ],
       ),
-      body: Stack(
+      body: _photoIds.isEmpty
+          ? const Center(child: Text('Bu sohbette henüz fotoğraf yok.'))
+          : Stack(
         children: [
-          // ---- TABAN: FOTOĞRAF LİSTESİ ----
-          if (_photos.isEmpty)
-            const Center(child: Text('Henüz fotoğraf yok. Üstten ekleyin.'))
-          else
-            ListView.builder(
-              padding: const EdgeInsets.all(12),
-              physics: const BouncingScrollPhysics(),
-              itemCount: _photos.length,
-              itemBuilder: (_, i) {
-                final pid = _photos[i];
-                final m = (_box.get(pid) as Map?) ?? {};
-                final path = (m['path'] ?? '').toString();
-
-                return Padding(
-                  key: ValueKey(pid),
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: GestureDetector(
-                    onScaleStart: (_) {
-                      _scalingId = pid;
-                      _pinchStartScale = (_boxScale[pid] ?? 1.0);
-                    },
-                    onScaleUpdate: (details) {
-                      if (_scalingId != pid) return;
-                      // Yeni ölçek: başlangıç ölçeği * gesture ölçeği (daha stabil)
-                      final start = _pinchStartScale ?? (_boxScale[pid] ?? 1.0);
-                      final calc = (start * details.scale).clamp(0.5, 3.0);
-                      // Yumuşatma: ani sıçramayı engelle
-                      final prev = (_boxScale[pid] ?? 1.0);
-                      final smoothed = prev + (calc - prev) * 0.3; // %30 yaklaş
-                      setState(() {
-                        _boxScale[pid] = smoothed;
-                      });
-                    },
-                    onScaleEnd: (_) async {
-                      if (_scalingId != pid) return;
-                      _scalingId = null;
-                      // kalıcı kaydet
-                      final mp = Map<String, dynamic>.from((_box.get(pid) as Map?) ?? {});
-                      mp['boxScale'] = (_boxScale[pid] ?? 1.0).clamp(0.5, 3.0);
-                      await _box.put(pid, mp);
-                      _pinchStartScale = null;
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: AnimatedContainer(
-                        duration: _resizeAnim,
-                        curve: Curves.easeOut,
-                        height: (250.0 * ((_boxScale[pid] ?? 1.0).clamp(0.5, 3.0))),
-                        decoration: BoxDecoration(
-                          // Arkaplan kutucuk hissini azalt
-                          color: Theme.of(context).colorScheme.surface,
-                          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.3)),
-                        ),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            if (path.isNotEmpty && File(path).existsSync())
-                            // Kutu içinde taşmadan göster
-                              FittedBox(
-                                fit: BoxFit.contain,
-                                child: Image.file(File(path)),
-                              )
-                            else
-                              Container(
-                                color: Colors.grey.shade300,
-                                alignment: Alignment.center,
-                                child: const Icon(Icons.broken_image_outlined),
-                              ),
-                            // Uzun basınca menü
-                            Positioned.fill(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onLongPress: () async {
-                                    final act = await showModalBottomSheet<String>(
-                                      context: context,
-                                      builder: (_) => SafeArea(
-                                        child: Wrap(children: [
-                                          ListTile(
-                                            leading: const Icon(Icons.graphic_eq),
-                                            title: const Text('Ses bölgelerini düzenle'),
-                                            subtitle: const Text('Bölge seç, kaydet, çal'),
-                                            onTap: () => Navigator.pop(context, 'audio'),
-                                          ),
-                                          ListTile(
-                                            leading: const Icon(Icons.aspect_ratio),
-                                            title: const Text('Boyutu varsayılan yap'),
-                                            onTap: () => Navigator.pop(context, 'reset'),
-                                          ),
-                                          ListTile(
-                                            leading: const Icon(Icons.delete_outline, color: Colors.red),
-                                            title: const Text('Fotoğrafı Sil'),
-                                            onTap: () => Navigator.pop(context, 'delete'),
-                                          ),
-                                          const SizedBox(height: 8),
-                                        ]),
-                                      ),
-                                    );
-                                    if (!mounted) return;
-                                    if (act == 'delete') {
-                                      _deletePhoto(pid);
-                                    } else if (act == 'reset') {
-                                      setState(() {
-                                        _boxScale[pid] = 1.0;
-                                      });
-                                      final mp = Map<String, dynamic>.from((_box.get(pid) as Map?) ?? {});
-                                      mp['boxScale'] = 1.0;
-                                      await _box.put(pid, mp);
-                                    } else if (act == 'audio') {
-                                      // Ses/dikdörtgen düzenleyiciyi aç
-                                      await Navigator.push(
-                                        context,
-                                        MaterialPageRoute(builder: (_) => _PhotoEditor(photoId: pid)),
-                                      );
-                                      if (mounted) setState(() {}); // dönüşte tazele
-                                    }
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
+          PageView.builder(
+            controller: _pageController,
+            // --- DEĞİŞİKLİK: Kaydırmayı devre dışı bırak ---
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _photoIds.length,
+            onPageChanged: (index) {
+              setState(() {
+                _currentPageIndex = index;
+              });
+            },
+            itemBuilder: (context, index) {
+              return _PhotoViewerPage(
+                key: _pageKeys[index],
+                photoId: _photoIds[index],
+                initialEditMode: _editMode,
+                initialSelectMode: _selectMode,
+              );
+            },
+          ),
+          // --- YENİ: Geri butonu ---
+          if (_photoIds.length > 1)
+            Positioned(
+              left: 8,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: IconButton(
+                  iconSize: 40,
+                  icon: const Icon(Icons.chevron_left),
+                  color: Colors.white.withOpacity(0.7),
+                  style: IconButton.styleFrom(
+                      backgroundColor: Colors.black.withOpacity(0.3)),
+                  onPressed: _currentPageIndex > 0
+                      ? () {
+                    _pageController.animateToPage(
+                      _currentPageIndex - 1,
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                      : null,
+                ),
+              ),
             ),
-          // (Tam ekran zoom/pan overlay kaldırıldı)
+          // --- YENİ: İleri butonu ---
+          if (_photoIds.length > 1)
+            Positioned(
+              right: 8,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: IconButton(
+                  iconSize: 40,
+                  icon: const Icon(Icons.chevron_right),
+                  color: Colors.white.withOpacity(0.7),
+                  style: IconButton.styleFrom(
+                      backgroundColor: Colors.black.withOpacity(0.3)),
+                  onPressed: _currentPageIndex < _photoIds.length - 1
+                      ? () {
+                    _pageController.animateToPage(
+                      _currentPageIndex + 1,
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                      : null,
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-/// Tam ekran fotoğraf + pin (sesli) düzenleyici (mevcut mantık, sohbet içinde çağrılır)
-class _PhotoEditor extends StatefulWidget {
+// GÜNCELLENDİ: Eskiden _PhotoEditor'dı, şimdi PageView içinde çalışan bir "sayfa".
+class _PhotoViewerPage extends StatefulWidget {
   final String photoId;
-  const _PhotoEditor({required this.photoId});
+  final bool initialEditMode;
+  final bool initialSelectMode;
+
+  const _PhotoViewerPage({
+    super.key,
+    required this.photoId,
+    this.initialEditMode = false,
+    this.initialSelectMode = false,
+  });
 
   @override
-  State<_PhotoEditor> createState() => _PhotoEditorState();
+  State<_PhotoViewerPage> createState() => _PhotoViewerPageState();
 }
 
-class _PhotoEditorState extends State<_PhotoEditor> {
-  // Seçim modu: kullanıcı kayıt bölgesi seçmek için mic'e basar
-  bool _selectMode = false;
+class _PhotoViewerPageState extends State<_PhotoViewerPage> {
   late Box _box;
   late String _imgPath;
-  // Dikdörtgen bölgeler: {x, y, w, h, audio, ts}  (x,y,w,h: 0..1 normalize)
   List<Map<String, dynamic>> _regions = [];
 
   final _recorder = FlutterSoundRecorder();
@@ -558,38 +452,64 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   bool _recReady = false;
   bool _isRecording = false;
 
-  // Düzenleme modu (görsel overlay sadece bu modda)
   bool _editMode = false;
+  bool _selectMode = false;
 
-  // Bölge seçim animasyonu/kırp çizimi
   bool _isSelecting = false;
-  Offset? _selStart;        // local start
-  Rect? _selRect;           // geçici seçim dikdörtgeni (local px)
-  final TransformationController _transform = TransformationController();
+  Offset? _selStart;
+  Rect? _selRect;
+
+  // --- DIŞARIDAN KONTROL İÇİN METODLAR ---
+  void toggleEditMode() => setState(() => _editMode = !_editMode);
+  void toggleSelectMode() {
+    setState(() => _selectMode = !_selectMode);
+    if (_selectMode && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Kaydedilecek alanı seçmek için sürükleyin.'),
+            duration: Duration(seconds: 2)),
+      );
+    }
+  }
+
+  Future<void> saveAll() async {
+    await _box.put(widget.photoId, {
+      'path': _imgPath,
+      'regions': _regions,
+      'createdAt':
+      (_box.get(widget.photoId)?['createdAt'] ?? DateTime.now().millisecondsSinceEpoch),
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Kaydedildi')));
+    }
+  }
+  // --- KONTROL METODLARI SONU ---
 
   @override
   void initState() {
     super.initState();
+    _editMode = widget.initialEditMode;
+    _selectMode = widget.initialSelectMode;
+
     _box = Hive.box('sohbet_kutusu');
     final m = (_box.get(widget.photoId) as Map?) ?? {};
     _imgPath = (m['path'] ?? '').toString();
-    // Yeni şema: regions; eski projelerde pins varsa onları küçük dikdörtgenlere dönüştürelim
-    final pins = (m['pins'] as List?)?.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList() ?? [];
-    _regions = (m['regions'] as List?)?.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList() ?? [];
+
+    // Geriye uyumluluk: eski 'pins' verisini yeni 'regions' formatına çevir
+    final pins = (m['pins'] as List?)?.cast<Map>().map<Map<String, dynamic>>((e) => Map.from(e)).toList() ?? [];
+    _regions = (m['regions'] as List?)?.cast<Map>().map<Map<String, dynamic>>((e) => Map.from(e)).toList() ?? [];
     if (_regions.isEmpty && pins.isNotEmpty) {
-      for (final p in pins) {
+      _regions = pins.map((p) {
         final dx = (p['x'] as num).toDouble();
         final dy = (p['y'] as num).toDouble();
         final r = ((p['r'] as num?)?.toDouble() ?? 0.08);
-        _regions.add({
-          'x': (dx - r).clamp(0.0, 1.0),
-          'y': (dy - r).clamp(0.0, 1.0),
-          'w': (r * 2).clamp(0.02, 1.0),
-          'h': (r * 2).clamp(0.02, 1.0),
-          'audio': p['audio'],
-          'ts': p['ts'] ?? DateTime.now().millisecondsSinceEpoch,
-        });
-      }
+        return {
+          'x': (dx - r).clamp(0.0, 1.0), 'y': (dy - r).clamp(0.0, 1.0),
+          'w': (r * 2).clamp(0.02, 1.0), 'h': (r * 2).clamp(0.02, 1.0),
+          'audio': p['audio'], 'ts': p['ts'] ?? DateTime.now().millisecondsSinceEpoch,
+        };
+      }).toList();
     }
     _initAudio();
   }
@@ -602,10 +522,10 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   }
 
   Future<void> _initAudio() async {
-    final mic = await Permission.microphone.request();
-    if (!mic.isGranted) {
+    if (!await Permission.microphone.request().isGranted) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mikrofon izni gerekli')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Mikrofon izni gerekli')));
       }
       return;
     }
@@ -615,37 +535,26 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   }
 
   Future<String> _newAudioPath() async {
-    final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}/sohbet');
-    if (!dir.existsSync()) dir.createSync(recursive: true);
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    return '${dir.path}/${widget.photoId}_$ts.aac';
-  }
-
-  // --- Dikdörtgen/normalize yardımcıları ---
-  Offset _normPoint(Offset local, Size draw) {
-    return Offset(
-      (local.dx / (draw.width == 0 ? 1 : draw.width)).clamp(0.0, 1.0),
-      (local.dy / (draw.height == 0 ? 1 : draw.height)).clamp(0.0, 1.0),
-    );
+    final dir = await getApplicationDocumentsDirectory();
+    final path = '${dir.path}/sohbet_audio';
+    if (!Directory(path).existsSync()) {
+      Directory(path).createSync(recursive: true);
+    }
+    return '$path/${widget.photoId}_${DateTime.now().millisecondsSinceEpoch}.aac';
   }
 
   Rect _normRectFromLocal(Offset a, Offset b, Size draw) {
-    final p1 = _normPoint(a, draw);
-    final p2 = _normPoint(b, draw);
-    final left = min(p1.dx, p2.dx);
-    final top = min(p1.dy, p2.dy);
-    final right = max(p1.dx, p2.dx);
-    final bottom = max(p1.dy, p2.dy);
-    return Rect.fromLTWH(left, top, max(0.02, right - left), max(0.02, bottom - top));
+    Offset norm(Offset o) => Offset((o.dx / draw.width).clamp(0.0, 1.0),
+        (o.dy / draw.height).clamp(0.0, 1.0));
+    final p1 = norm(a);
+    final p2 = norm(b);
+    return Rect.fromPoints(p1, p2);
   }
 
   Rect _denormRect(Map<String, dynamic> r, Size draw) {
     return Rect.fromLTWH(
-      (r['x'] as num).toDouble() * draw.width,
-      (r['y'] as num).toDouble() * draw.height,
-      (r['w'] as num).toDouble() * draw.width,
-      (r['h'] as num).toDouble() * draw.height,
+      (r['x'] as num).toDouble() * draw.width, (r['y'] as num).toDouble() * draw.height,
+      (r['w'] as num).toDouble() * draw.width, (r['h'] as num).toDouble() * draw.height,
     );
   }
 
@@ -661,10 +570,10 @@ class _PhotoEditorState extends State<_PhotoEditor> {
     final nr = _normRectFromLocal(localRect.topLeft, localRect.bottomRight, drawSize);
     final path = await _newAudioPath();
     await _recorder.startRecorder(toFile: path);
-    if (!mounted) return;
-    setState(() {
-      _isRecording = true;
-      _regions.add({'x': nr.left, 'y': nr.top, 'w': nr.width, 'h': nr.height, 'audio': null, 'ts': DateTime.now().millisecondsSinceEpoch});
+    if (mounted) setState(() => _isRecording = true);
+    _regions.add({
+      'x': nr.left, 'y': nr.top, 'w': nr.width, 'h': nr.height, 'audio': null,
+      'ts': DateTime.now().millisecondsSinceEpoch
     });
   }
 
@@ -674,276 +583,208 @@ class _PhotoEditorState extends State<_PhotoEditor> {
     if (!mounted) return;
     setState(() {
       _isRecording = false;
-      for (int i = _regions.length - 1; i >= 0; i--) {
-        if (_regions[i]['audio'] == null) {
-          _regions[i]['audio'] = filePath;
-          break;
-        }
-      }
-      // seçim görsellerini gizle
       _isSelecting = false;
       _selStart = null;
       _selRect = null;
+      // Son eklenen null audio'lu bölgeyi bul ve güncelle
+      final index = _regions.lastIndexWhere((r) => r['audio'] == null);
+      if (index != -1) _regions[index]['audio'] = filePath;
     });
   }
 
-  Future<void> _play(String path) async {
-    if (path.isEmpty) return;
+  Future<void> _play(String? path) async {
+    if (path == null || path.isEmpty) return;
     await _player.stopPlayer();
     await _player.startPlayer(fromURI: path);
   }
 
   Future<void> _deleteRegion(int index) async {
-    final a = (_regions[index]['audio'] ?? '').toString();
-    if (a.isNotEmpty && File(a).existsSync()) {
-      try { File(a).deleteSync(); } catch (_) {}
+    final audioPath = _regions[index]['audio'] as String?;
+    if (audioPath != null && await File(audioPath).exists()) {
+      try {
+        await File(audioPath).delete();
+      } catch (_) {}
     }
-    setState(() { _regions.removeAt(index); });
-  }
-
-  Future<void> _reRecordRegion(int index) async {
-    final a = (_regions[index]['audio'] ?? '').toString();
-    if (a.isNotEmpty && File(a).existsSync()) {
-      try { File(a).deleteSync(); } catch (_) {}
-    }
-    setState(() { _regions[index]['audio'] = null; });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Bölgeyi tekrar çiz ve kayıt için basılı tut, sonra bırak.')),
-    );
-  }
-
-  Future<void> _saveAll() async {
-    await _box.put(widget.photoId, {
-      'path': _imgPath,
-      'regions': _regions,
-      'createdAt': (_box.get(widget.photoId)?['createdAt'] ?? DateTime.now().millisecondsSinceEpoch),
-    });
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kaydedildi')));
+    setState(() => _regions.removeAt(index));
   }
 
   @override
   Widget build(BuildContext context) {
     final imgFile = File(_imgPath);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Düzenle'),
-        actions: [
-          IconButton(
-            tooltip: _editMode ? 'Düzenleme modunu kapat' : 'Düzenleme modunu aç',
-            icon: Icon(_editMode ? Icons.visibility_off : Icons.edit_square),
-            onPressed: () => setState(() => _editMode = !_editMode),
-          ),
-          IconButton(
-            tooltip: _selectMode ? 'Seçim modunu kapat' : 'Kayıt bölgesi seç',
-            icon: Icon(_selectMode ? Icons.mic_off : Icons.mic),
-            onPressed: () {
-              setState(() {
-                _selectMode = !_selectMode;
-              });
-              if (_selectMode) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Kaydedilecek alanı seçmek için sürükleyin.')),
-                );
-              }
-            },
-          ),
-          IconButton(
-            tooltip: 'Kaydet',
-            icon: const Icon(Icons.save_outlined),
-            onPressed: _saveAll,
-          ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final drawSize = Size(constraints.maxWidth, constraints.maxHeight);
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: (d) {
-              // Görsel işaret yok; her zaman tıklanan bölge varsa çal
-              final idx = _hitTestRegion(d.localPosition, drawSize);
-              if (idx >= 0) {
-                final a = (_regions[idx]['audio'] ?? '').toString();
-                if (a.isNotEmpty) _play(a);
-              }
-            },
-            onPanStart: (_editMode && _selectMode) ? (d) {
-              setState(() {
-                _isSelecting = true;
-                _selStart = d.localPosition;
-                _selRect = Rect.fromLTWH(d.localPosition.dx, d.localPosition.dy, 0, 0);
-              });
-            } : null,
-            onPanUpdate: (_editMode && _selectMode) ? (d) {
-              if (_isSelecting && _selStart != null) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final drawSize = Size(constraints.maxWidth, constraints.maxHeight);
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (d) {
+            if (_editMode) return; // Düzenleme modunda ana tıklama çalışmaz
+            final idx = _hitTestRegion(d.localPosition, drawSize);
+            if (idx >= 0) _play(_regions[idx]['audio'] as String?);
+          },
+          onPanStart: (_editMode && _selectMode)
+              ? (d) {
+            setState(() {
+              _isSelecting = true;
+              _selStart = d.localPosition;
+            });
+          }
+              : null,
+          onPanUpdate: (_editMode && _selectMode)
+              ? (d) {
+            if (_isSelecting && _selStart != null) {
+              setState(
+                      () => _selRect = Rect.fromPoints(_selStart!, d.localPosition));
+            }
+          }
+              : null,
+          onPanEnd: (_editMode && _selectMode)
+              ? (_) async {
+            if (_isSelecting && _selRect != null) {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text('Kayıt Başlatılsın mı?'),
+                  content: const Text(
+                      'Seçtiğiniz alan için ses kaydı başlatılsın mı?'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('İptal')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Evet')),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                await _startRecordForRect(_selRect!, drawSize);
+              } else {
                 setState(() {
-                  final a = _selStart!;
-                  final b = d.localPosition;
-                  final left = min(a.dx, b.dx);
-                  final top = min(a.dy, b.dy);
-                  final right = max(a.dx, b.dx);
-                  final bottom = max(a.dy, b.dy);
-                  _selRect = Rect.fromLTWH(left, top, right - left, bottom - top);
+                  _isSelecting = false;
+                  _selRect = null;
                 });
               }
-            } : null,
-            onPanEnd: (_editMode && _selectMode) ? (_) async {
-              if (_isSelecting && _selRect != null) {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('Kayıt başlatılsın mı?'),
-                    content: const Text('Seçtiğin alan için ses kaydı başlatılsın mı?'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('İptal')),
-                      FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Evet')),
-                    ],
-                  ),
-                );
-                if (confirm == true) {
-                  await _startRecordForRect(_selRect!, drawSize);
-                } else {
-                  setState(() {
-                    _isSelecting = false;
-                    _selStart = null;
-                    _selRect = null;
-                  });
-                }
-              }
-            } : null,
-            onLongPressEnd: (_) async {
-              // Uzun basmayı salınca kaydı bitir
-              if (_isRecording) await _stopRecord();
-            },
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: InteractiveViewer(
-                    transformationController: _transform,
-                    panEnabled: true,
-                    scaleEnabled: true,
-                    minScale: 0.5,
-                    maxScale: 8.0,
-                    boundaryMargin: const EdgeInsets.all(1000),
-                    clipBehavior: Clip.none,
-                    constrained: false,
-                    child: imgFile.existsSync()
-                        ? SizedBox.expand(child: Image.file(imgFile, fit: BoxFit.contain))
-                        : SizedBox(width: 800, height: 800, child: Container(color: Colors.black12)),
-                  ),
+            }
+          }
+              : null,
+          onLongPressEnd: null,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Tam ekran fotoğraf
+              if (imgFile.existsSync())
+                Image.file(
+                  imgFile,
+                  fit: BoxFit.contain,
+                )
+              else
+                Container(
+                  color: Colors.black12,
+                  child: const Center(child: Icon(Icons.image_not_supported)),
                 ),
 
-                // Seçili bölgeleri çizen overlay (SADECE edit modunda görünür)
-                if (_editMode)
-                  Positioned.fill(
-                    child: LayoutBuilder(
-                      builder: (_, s) {
-                        final ds = Size(s.maxWidth, s.maxHeight);
-                        return Stack(children: [
-                          // Mevcut bölgeler (yarı saydam dikdörtgenler)
-                          for (int i = 0; i < _regions.length; i++)
-                            _RegionOverlay(
-                              rect: _denormRect(_regions[i], ds),
-                              recordingNow: _isRecording && _regions[i]['audio'] == null,
-                              onTap: () {
-                                final a = (_regions[i]['audio'] ?? '').toString();
-                                if (a.isNotEmpty) _play(a);
-                              },
-                              onLongPress: () async {
-                                final act = await showModalBottomSheet<String>(
-                                  context: context,
-                                  builder: (_) => SafeArea(
-                                    child: Wrap(children: [
-                                      ListTile(
-                                        leading: const Icon(Icons.mic),
-                                        title: const Text('Bu bölgeye yeniden kayıt'),
-                                        onTap: () => Navigator.pop(context, 're'),
-                                      ),
-                                      ListTile(
-                                        leading: const Icon(Icons.delete_outline, color: Colors.red),
-                                        title: const Text('Bölgeyi sil'),
-                                        onTap: () => Navigator.pop(context, 'del'),
-                                      ),
-                                      const SizedBox(height: 8),
-                                    ]),
-                                  ),
-                                );
-                                if (act == 'del') _deleteRegion(i);
-                                if (act == 're') _reRecordRegion(i);
-                              },
-                            ),
-
-                          // Kırp-animasyonu benzeri canlı seçim dikdörtgeni
-                          if (_isSelecting && _selRect != null)
-                            IgnorePointer(
-                              child: CustomPaint(
-                                painter: _CropOverlayPainter(_selRect!),
-                                size: Size.infinite,
-                              ),
-                            ),
-                        ]);
-                      },
-                    ),
-                  ),
-
-                // Kayıt bildirimi (edit modunda görünür)
-                if (_isRecording)
-                  Positioned(
-                    left: 12, top: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(100),
+              // Ses bölgeleri overlay'i (sadece edit modunda görünür)
+              if (_editMode)
+                Stack(
+                  children: [
+                    for (int i = 0; i < _regions.length; i++)
+                      _RegionOverlay(
+                        rect: _denormRect(_regions[i], drawSize),
+                        recordingNow:
+                        _isRecording && _regions[i]['audio'] == null,
+                        onTap: () => _play(_regions[i]['audio'] as String?),
+                        onLongPress: () async {
+                          final act = await showModalBottomSheet<String>(
+                            context: context,
+                            builder: (_) => SafeArea(
+                                child: Wrap(children: [
+                                  ListTile(
+                                      leading: const Icon(Icons.delete_outline,
+                                          color: Colors.red),
+                                      title: const Text('Bölgeyi Sil'),
+                                      onTap: () => Navigator.pop(context, 'del')),
+                                ])),
+                          );
+                          if (act == 'del') _deleteRegion(i);
+                        },
                       ),
-                      child: const Row(children: [
-                        Icon(Icons.fiber_manual_record, size: 16, color: Colors.white),
-                        SizedBox(width: 6),
-                        Text('Kayıt alınıyor… basılı tutmayı bırakınca biter', style: TextStyle(color: Colors.white)),
-                      ]),
+                  ],
+                ),
+
+              // Canlı seçim çerçevesi
+              if (_isSelecting && _selRect != null)
+                IgnorePointer(
+                    child: CustomPaint(
+                        painter: _CropOverlayPainter(_selRect!),
+                        size: Size.infinite)),
+
+              // Kayıt bildirimi
+              if (_isRecording)
+                Positioned(
+                  left: 12,
+                  top: 12,
+                  child: Container(
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(100)),
+                    child: const Row(children: [
+                      Icon(Icons.fiber_manual_record,
+                          size: 16, color: Colors.white),
+                      SizedBox(width: 6),
+                      Text('Kayıt alınıyor...',
+                          style: TextStyle(color: Colors.white)),
+                    ]),
+                  ),
+                ),
+              // Kaydı durdur butonu (sadece kayıt sırasında görünür)
+              if (_isRecording)
+                Positioned(
+                  bottom: 24,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: ElevatedButton.icon(
+                      onPressed: _stopRecord,
+                      icon: const Icon(Icons.stop),
+                      label: const Text('Kaydı durdur'),
                     ),
                   ),
-              ],
-            ),
-          );
-        },
-      ),
-      floatingActionButton: _isRecording
-          ? FloatingActionButton.extended(
-        backgroundColor: Colors.red,
-        icon: const Icon(Icons.stop),
-        label: const Text('Kaydı Durdur'),
-        onPressed: _stopRecord,
-      )
-          : null,
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
 
-/// Edit modunda çizilen şeffaf dikdörtgen
+// Görsel Bölge Widget'ı
 class _RegionOverlay extends StatelessWidget {
   final Rect rect;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final bool recordingNow;
-  const _RegionOverlay({required this.rect, required this.onTap, required this.onLongPress, this.recordingNow = false});
+  const _RegionOverlay(
+      {required this.rect,
+        required this.onTap,
+        required this.onLongPress,
+        this.recordingNow = false});
 
   @override
   Widget build(BuildContext context) {
     final color = recordingNow ? Colors.orange : Colors.blueAccent;
-    return Positioned(
-      left: rect.left,
-      top: rect.top,
+    return Positioned.fromRect(
+      rect: rect,
       child: GestureDetector(
         onTap: onTap,
         onLongPress: onLongPress,
         child: Container(
-          width: rect.width,
-          height: rect.height,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.18),
-            border: Border.all(color: color, width: 2),
+            color: color.withOpacity(0.2),
+            border: Border.all(color: color, width: 2.5),
+            borderRadius: BorderRadius.circular(4),
           ),
         ),
       ),
@@ -951,49 +792,21 @@ class _RegionOverlay extends StatelessWidget {
   }
 }
 
-/// Canlı seçim için crop animasyonu benzeri boya
+// Canlı Seçim Çerçevesi Çizici
 class _CropOverlayPainter extends CustomPainter {
   final Rect rect;
-  const _CropOverlayPainter(this.rect);
+  _CropOverlayPainter(this.rect);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final bgPaint = Paint()..color = Colors.black.withOpacity(0.35);
-    // Karanlık maske
-    canvas.drawRect(Offset.zero & size, bgPaint);
-
-    // Seçim alanını temizle
-    final clear = Paint()..blendMode = BlendMode.clear;
-    canvas.saveLayer(Offset.zero & size, Paint());
-    canvas.drawRect(rect, clear);
-    canvas.restore();
-
-    // Kenarlık
-    final border = Paint()
+    final borderPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
-    canvas.drawRect(rect, border);
-
-    // Köşe işaretleri
-    final handle = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 3;
-    const h = 14.0;
-    // sol-üst
-    canvas.drawLine(rect.topLeft, rect.topLeft + const Offset(h, 0), handle);
-    canvas.drawLine(rect.topLeft, rect.topLeft + const Offset(0, h), handle);
-    // sağ-üst
-    canvas.drawLine(rect.topRight, rect.topRight - const Offset(h, 0), handle);
-    canvas.drawLine(rect.topRight, rect.topRight + const Offset(0, h), handle);
-    // sol-alt
-    canvas.drawLine(rect.bottomLeft, rect.bottomLeft + const Offset(h, 0), handle);
-    canvas.drawLine(rect.bottomLeft, rect.bottomLeft - const Offset(0, h), handle);
-    // sağ-alt
-    canvas.drawLine(rect.bottomRight, rect.bottomRight - const Offset(h, 0), handle);
-    canvas.drawLine(rect.bottomRight, rect.bottomRight - const Offset(0, h), handle);
+    canvas.drawRect(rect, borderPaint);
   }
 
   @override
-  bool shouldRepaint(covariant _CropOverlayPainter oldDelegate) => oldDelegate.rect != rect;
+  bool shouldRepaint(covariant _CropOverlayPainter oldDelegate) =>
+      oldDelegate.rect != rect;
 }

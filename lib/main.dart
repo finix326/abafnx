@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'ai/ai_engine.dart';
 
 // STATE
 import 'app_state/current_student.dart';
@@ -20,8 +21,8 @@ import 'siniflama_oyunu_sayfasi.dart';
 import 'kartlar_sayfasi.dart';
 
 // Terapist modülü ekranları
-import 'veri.dart' show VeriSayfasi; // Yeni Program Oluştur
-import 'calisilan_programlar.dart' show CalisilanProgramlarSayfasi; // Veri Girişi
+import 'veri.dart' show VeriSayfasi;
+import 'calisilan_programlar.dart' show CalisilanProgramlarSayfasi;
 import 'cizelge_listesi.dart';
 import 'cizelge_ekle_sayfasi.dart';
 import 'bep_duzenleme_sayfasi.dart';
@@ -33,11 +34,16 @@ import 'hem/saglik_ogrenci_listesi_page.dart';
 // ✅ Sohbet modülü
 import 'sohbet_page.dart';
 
-// ✅ Yeni: Eşleştirme oyunu listesi (oluştur/oynat akışı)
-import 'eslestirme_oyun_listesi.dart'; // <-- yeni sistemin giriş ekranı
+// ✅ Eşleştirme oyunu listesi
+import 'eslestirme_oyun_listesi.dart';
+// DÜZELTİLDİ: Eksik import eklendi
+import 'hafiza_oyunu_listesi_sayfasi.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 🔹 Yapay zekâ motorunu başlat (Gemini)
+  // DÜZELTİLDİ: Fonksiyon çağrısı syntax hatası giderildi.
+  AIEngine.init('AIzaSyBpZFzWz5cdTaGiM07Chb1G_-fUUGOSYWQ'); // TODO: Burayı kendi Gemini API anahtarınla değiştir
 
   final appDocDir = await getApplicationDocumentsDirectory();
   await Hive.initFlutter(appDocDir.path);
@@ -52,13 +58,17 @@ Future<void> main() async {
   // ✅ Yeni: Eşleştirme oyunları için kutu
   await Hive.openBox('es_game_box');
 
+  // ✅ Kartlar için kutu
+  await Hive.openBox('kart_dizileri');
+
+  await Hive.openBox('hafiza_oyunlari');
+
   // Öğrenciler
   if (!Hive.isAdapterRegistered(100)) {
-    Hive.registerAdapter(StudentAdapter()); // typeId: 100
+    Hive.registerAdapter(StudentAdapter());
   }
   await Hive.openBox<Student>('students');
 
-  // (Varsa) auth kutusu giriş ekranının içinde kullanılır
   await Hive.openBox('auth');
 
   final current = CurrentStudent();
@@ -74,6 +84,7 @@ Future<void> main() async {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -88,7 +99,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// ANA SAYFA: Oyunlar ve Kartlar burada
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -109,7 +119,7 @@ class HomePage extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const EslestirmeOyunListesiPage(), // <-- yeni liste sayfası
+                      builder: (_) => const EslestirmeOyunListesiPage(),
                     ),
                   );
                 },
@@ -120,17 +130,20 @@ class HomePage extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const SiniflamaOyunuSayfasi()),
+                    MaterialPageRoute(
+                        builder: (_) => const SiniflamaOyunuSayfasi()),
                   );
                 },
               ),
               const SizedBox(height: 16),
               _BigButton(
-                text: 'Kartlar',
+                text: 'Hafıza Oyunu',
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const KartlarSayfasi()),
+                    MaterialPageRoute(
+                      builder: (_) => const HafizaOyunuListesiSayfasi(),
+                    ),
                   );
                 },
               ),
@@ -140,7 +153,20 @@ class HomePage extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const SohbetPage()),
+                    MaterialPageRoute(
+                      builder: (_) => const SohbetHomePage(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              _BigButton(
+                text: 'Kartlar',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const KartlarSayfasi()),
                   );
                 },
               ),
@@ -172,7 +198,6 @@ class _BigButton extends StatelessWidget {
   }
 }
 
-/// TERAPİST MODÜLÜ — Drawer
 class _TerapistDrawer extends StatelessWidget {
   const _TerapistDrawer();
 
@@ -185,8 +210,6 @@ class _TerapistDrawer extends StatelessWidget {
         padding: EdgeInsets.zero,
         children: [
           const _TerapistDrawerHeader(),
-
-          // Öğrenci Değiştir / Ekle
           ListTile(
             leading: const Icon(Icons.switch_account),
             title: const Text('Öğrenci Değiştir / Ekle'),
@@ -197,8 +220,6 @@ class _TerapistDrawer extends StatelessWidget {
           ),
           if (currentId != null) const _AktifOgrenciTile(),
           const Divider(height: 1),
-
-          // PROGRAM / VERİ
           ListTile(
             leading: const Icon(Icons.add_circle_outline),
             title: const Text('Yeni Program Oluştur'),
@@ -215,10 +236,7 @@ class _TerapistDrawer extends StatelessWidget {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const CalisilanProgramlarSayfasi()));
             },
           ),
-
           const Divider(height: 1),
-
-          // ÇİZELGE
           ListTile(
             leading: const Icon(Icons.view_list_outlined),
             title: const Text('Çizelge Listesi'),
@@ -235,25 +253,24 @@ class _TerapistDrawer extends StatelessWidget {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const CizelgeEkleSayfasi(tur: 'Genel')));
             },
           ),
-
           const Divider(height: 1),
-
-          // BEP
           ListTile(
             leading: const Icon(Icons.edit_note_outlined),
             title: const Text('BEP Düzenleme'),
             onTap: () async {
-              Navigator.pop(context);
+              // GÜVENLİ YAPI: Önce context'e bağlı değişkenleri al
+              final navigator = Navigator.of(context);
+              final studentId = context.read<CurrentStudent>().currentId;
 
-              final currentId = context.read<CurrentStudent>().currentId;
-              final boxName = currentId != null ? 'bep_raporlari_$currentId' : 'bep_raporlari';
+              // Sonra context'i son kez kullan (pop)
+              navigator.pop();
+
+              // Sonra asenkron işlemi yap
+              final boxName = studentId != null ? 'bep_raporlari_$studentId' : 'bep_raporlari';
               final box = await Hive.openBox(boxName);
 
-              if (!context.mounted) return;
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => BepDuzenlemeSayfasi(box: box)),
-              );
+              // Güvenli navigator ile yeni sayfayı aç
+              navigator.push(MaterialPageRoute(builder: (_) => BepDuzenlemeSayfasi(box: box)));
             },
           ),
           ListTile(
@@ -261,29 +278,18 @@ class _TerapistDrawer extends StatelessWidget {
             title: const Text('BEP Raporları Listesi'),
             onTap: () {
               Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const BepRaporlariListesiSayfasi()),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const BepRaporlariListesiSayfasi()));
             },
           ),
-
           const Divider(height: 1),
-
-          // ✅ SAĞLIK (ÇIKIŞ'IN HEMEN ÜSTÜ)
           ListTile(
             leading: const Icon(Icons.health_and_safety_outlined),
             title: const Text('Sağlık'),
             onTap: () {
               Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SaglikOgrenciListesiPage()),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const SaglikOgrenciListesiPage()));
             },
           ),
-
-          // ÇIKIŞ
           ListTile(
             leading: const Icon(Icons.logout),
             title: const Text('Çıkış Yap'),

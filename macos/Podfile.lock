@@ -145,7 +145,7 @@ SPEC CHECKSUMS:
   FirebaseRemoteConfigInterop: 6efda51fb5e2f15b16585197e26eaa09574e8a4d
   FirebaseSessions: dbd14adac65ce996228652c1fc3a3f576bdf3ecc
   flutter_tts: ae915565cc6948444b513acc8ee021993281e027
-  FlutterMacOS: 8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24
+  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   GoogleDataTransport: 6c09b596d841063d76d4288cc2d2f42cc36e1e2a
   GoogleUtilities: ea963c370a38a8069cc5f7ba4ca849a60b6d7d15
   nanopb: 438bc412db1928dac798aa6fd75726007be04262
@@ -158,4 +158,4 @@ SPEC CHECKSUMS:
 
 PODFILE CHECKSUM: c6a97b94c90fa9c7edd8e78e8e08588e459a959f
 
-COCOAPODS: 1.15.2
+COCOAPODS: 1.16.2

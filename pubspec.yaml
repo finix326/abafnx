@@ -11,6 +11,10 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.6
 
+  # === 🤖 YAPAY ZEKA (GEMINI) ENTEGRASYONU ===
+  google_generative_ai: ^0.2.0
+  http: ^1.1.0
+
   # === 📦 VERİ YÖNETİMİ VE DURUM (HIVE ÖNCELİKLİ) ===
   hive: ^2.2.3
   hive_flutter: ^1.1.0
