@@ -80,7 +80,9 @@ class _CizelgeDetayResimliSesliSayfasiState
     }
     final list = (existing['icerik'] as List?) ?? const [];
     final fallback =
-        mounted ? context.read<CurrentStudent>().currentId?.trim() : null;
+        mounted
+            ? context.read<CurrentStudent>().currentStudentId?.trim()
+            : null;
     if (_ownerId == null || _ownerId!.isEmpty) {
       _ownerId = (fallback != null && fallback.isNotEmpty) ? fallback : null;
     }
@@ -170,7 +172,9 @@ class _CizelgeDetayResimliSesliSayfasiState
           (_recordCreatedAt ?? record?.createdAt ?? now).millisecondsSinceEpoch);
 
     final fallback =
-        mounted ? context.read<CurrentStudent>().currentId?.trim() : null;
+        mounted
+            ? context.read<CurrentStudent>().currentStudentId?.trim()
+            : null;
     final owner = _ownerId?.trim() ?? fallback;
     _ownerId = owner?.isNotEmpty == true ? owner : null;
 

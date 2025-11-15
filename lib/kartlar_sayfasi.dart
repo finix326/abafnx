@@ -60,7 +60,8 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
       final createdAt = DateTime.now();
       final id = createdAt.millisecondsSinceEpoch.toString();
       final box = await _boxFuture;
-      final studentId = context.read<CurrentStudent>().currentId?.trim();
+      final studentId =
+          context.read<CurrentStudent>().currentStudentId?.trim();
       final data = {
         'id': id,
         'ad': controller.text.trim(),
@@ -83,7 +84,8 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
 
   @override
   Widget build(BuildContext context) {
-    final currentStudentId = context.watch<CurrentStudent>().currentId;
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kart Dizileri')),
@@ -102,6 +104,7 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
           }
 
           final box = snapshot.data!;
+          final normalizedCurrentId = currentStudentId?.trim();
           return ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
             valueListenable: box.listenable(),
             builder: (context, _, __) {
@@ -122,10 +125,10 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
 
                 final ownerId = record.studentId.trim();
 
-                final matchesStudent = (currentStudentId == null ||
-                        currentStudentId.isEmpty)
+                final matchesStudent = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
                     ? ownerId.isEmpty || ownerId == 'unknown'
-                    : ownerId == currentStudentId;
+                    : ownerId == normalizedCurrentId;
 
                 if (!matchesStudent) continue;
 
@@ -144,8 +147,8 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
               }
 
               if (diziler.isEmpty) {
-                final emptyText = (currentStudentId == null ||
-                        currentStudentId.isEmpty)
+                final emptyText = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
                     ? 'Henüz kart dizisi eklenmedi.\nSağ alttan yeni bir tane oluştur.'
                     : 'Bu öğrenci için kart dizisi yok.\nSağ alttan yeni bir tane oluştur.';
                 return Center(

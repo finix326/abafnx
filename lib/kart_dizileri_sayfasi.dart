@@ -60,7 +60,8 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
       final createdAt = DateTime.now();
       final id = createdAt.millisecondsSinceEpoch.toString();
       final box = await _boxFuture;
-      final studentId = context.read<CurrentStudent>().currentId?.trim();
+      final studentId =
+          context.read<CurrentStudent>().currentStudentId?.trim();
       final data = {
         'id': id,
         'ad': controller.text.trim(),
@@ -83,7 +84,8 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
 
   @override
   Widget build(BuildContext context) {
-    final currentStudentId = context.watch<CurrentStudent>().currentId;
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kart Dizileri')),
@@ -106,6 +108,7 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
             valueListenable: box.listenable(),
             builder: (context, _, __) {
               final diziler = <Map<String, dynamic>>[];
+              final normalizedCurrentId = currentStudentId?.trim();
 
               for (final key in box.keys) {
                 final raw = box.get(key);
@@ -122,10 +125,10 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
 
                 final ownerId = record.studentId.trim();
 
-                final matchesStudent = (currentStudentId == null ||
-                        currentStudentId.isEmpty)
+                final matchesStudent = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
                     ? ownerId.isEmpty || ownerId == 'unknown'
-                    : ownerId == currentStudentId;
+                    : ownerId == normalizedCurrentId;
 
                 if (!matchesStudent) continue;
 
@@ -144,8 +147,8 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
               }
 
               if (diziler.isEmpty) {
-                final emptyText = (currentStudentId == null ||
-                        currentStudentId.isEmpty)
+                final emptyText = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
                     ? 'Henüz kart dizisi eklenmedi.\nSağ alttan yeni bir tane oluştur.'
                     : 'Bu öğrenci için kart dizisi yok.\nSağ alttan yeni bir tane oluştur.';
                 return Center(

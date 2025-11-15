@@ -40,15 +40,15 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
   Future<void> _kaydet() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final currentId = context.read<CurrentStudent>().currentId;
-    if (currentId == null) {
+    final currentStudentId = context.read<CurrentStudent>().currentStudentId;
+    if (currentStudentId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Lütfen önce bir öğrenci seçin')),
       );
       return;
     }
 
-    final box = await _openProgramBox(currentId);
+    final box = await _openProgramBox(currentStudentId);
     final now = DateTime.now();
 
     final tekrar = int.tryParse(_tekrarCtrl.text.trim()) ?? 0;
@@ -65,7 +65,7 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
     final record = FinixDataService.buildRecord(
       module: 'program_bilgileri',
       data: kayit,
-      studentId: currentId,
+      studentId: currentStudentId,
       programName: kayit['programAdi']?.toString(),
       createdAt: now,
       updatedAt: now,

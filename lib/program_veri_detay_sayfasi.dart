@@ -50,8 +50,11 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
   }
 
   Future<void> _prepareBoxesAndLoadForDate() async {
-    final currentId = context.read<CurrentStudent>().currentId;
-    final boxName = currentId != null ? 'veri_kutusu_$currentId' : 'veri_kutusu';
+    final currentStudentId =
+        context.read<CurrentStudent>().currentStudentId;
+    final boxName = currentStudentId != null
+        ? 'veri_kutusu_$currentStudentId'
+        : 'veri_kutusu';
     _veriBox ??= await Hive.openBox(boxName);
     await _loadToday();
   }

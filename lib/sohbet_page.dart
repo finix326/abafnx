@@ -1,5 +1,6 @@
 // lib/sohbet_page.dart
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -9,6 +10,9 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
+
+import 'app_state/current_student.dart';
 
 // Ana Sayfa: Sohbet listesini gösterir.
 class SohbetHomePage extends StatefulWidget {
@@ -28,12 +32,22 @@ class _SohbetHomePageState extends State<SohbetHomePage> {
   }
 
   Future<void> _addSohbet() async {
+    final studentId =
+        context.read<CurrentStudent>().currentStudentId?.trim();
+    if (studentId == null || studentId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lütfen önce bir öğrenci seçin.')),
+      );
+      return;
+    }
+
     final newId = DateTime.now().millisecondsSinceEpoch.toString();
     final now = DateTime.now().millisecondsSinceEpoch;
     await _box.put(newId, {
       'title': 'Yeni Sohbet',
       'photos': <String>[],
       'createdAt': now,
+      'studentId': studentId,
     });
     if (!mounted) return;
     Navigator.push(
@@ -110,6 +124,20 @@ class _SohbetHomePageState extends State<SohbetHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId?.trim();
+    final hasStudent = currentStudentId != null && currentStudentId.isNotEmpty;
+
+    if (!hasStudent) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Sohbetler')),
+        body: const Center(
+          child: Text('Lütfen sohbet eklemeden önce bir öğrenci seçin.'),
+        ),
+        floatingActionButton: null,
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Sohbetler')),
       body: ValueListenableBuilder<Box>(
@@ -118,10 +146,21 @@ class _SohbetHomePageState extends State<SohbetHomePage> {
           // Sadece 'photos' alanı olan kayıtları sohbet olarak kabul et
           final allKeys = box.keys.toList();
           final sohbetKeys = <dynamic>[];
+          final normalizedCurrent = currentStudentId!;
           for (final k in allKeys) {
             final v = box.get(k);
             if (v is Map && v.containsKey('photos')) {
-              sohbetKeys.add(k);
+              final owner = (v['studentId'] ?? '').toString().trim();
+              if (owner.isEmpty) {
+                final normalized = Map<String, dynamic>.from(v);
+                normalized['studentId'] = normalizedCurrent;
+                unawaited(_box.put(k, normalized));
+                sohbetKeys.add(k);
+                continue;
+              }
+              if (owner == normalizedCurrent) {
+                sohbetKeys.add(k);
+              }
             }
           }
           sohbetKeys.sort((a, b) => b.toString().compareTo(a.toString()));
@@ -204,10 +243,12 @@ class _SohbetHomePageState extends State<SohbetHomePage> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addSohbet,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: hasStudent
+          ? FloatingActionButton(
+              onPressed: _addSohbet,
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 }
@@ -251,7 +292,19 @@ class _SohbetViewerState extends State<_SohbetViewer> {
   }
 
   void _loadPhotos() {
-    final sohbetData = _box.get(widget.sohbetId) as Map? ?? {};
+    var sohbetData = _box.get(widget.sohbetId) as Map? ?? {};
+    final ownerId = (sohbetData['studentId'] ?? '').toString().trim();
+    if (ownerId.isEmpty) {
+      final currentStudentId =
+          context.read<CurrentStudent>().currentStudentId?.trim();
+      if (currentStudentId != null && currentStudentId.isNotEmpty) {
+        final normalized = Map<String, dynamic>.from(sohbetData);
+        normalized['studentId'] = currentStudentId;
+        unawaited(_box.put(widget.sohbetId, normalized));
+        sohbetData = normalized;
+      }
+    }
+
     _photoIds = (sohbetData['photos'] as List?)?.cast<String>() ?? [];
     _pageKeys.clear();
     for (var _ in _photoIds) {
@@ -289,6 +342,9 @@ class _SohbetViewerState extends State<_SohbetViewer> {
       'path': targetFile.path,
       'regions': <Map<String, dynamic>>[],
       'createdAt': DateTime.now().millisecondsSinceEpoch,
+      'studentId':
+          (_box.get(widget.sohbetId) as Map?)?['studentId']?.toString() ??
+              context.read<CurrentStudent>().currentStudentId,
     });
 
     // Sohbetin photos listesine bu fotoğrafı ekle

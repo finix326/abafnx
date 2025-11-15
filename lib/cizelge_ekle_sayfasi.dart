@@ -42,7 +42,7 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
     final kaydedilecekTur = widget.tur == 'yazili' ? 'yazili' : 'resimli_sesli';
     final box = await _boxFuture;
     final now = DateTime.now();
-    final studentId = context.read<CurrentStudent>().currentId?.trim();
+    final studentId = context.read<CurrentStudent>().currentStudentId?.trim();
 
     final data = <String, dynamic>{
       'ad': ad,

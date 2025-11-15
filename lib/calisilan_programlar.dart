@@ -117,8 +117,9 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
-    if (currentId == null) {
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
+    if (currentStudentId == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Veri Girişi')),
         body: const Center(child: Text('Lütfen bir öğrenci seçin')),
@@ -126,7 +127,7 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
     }
 
     return FutureBuilder<Box>(
-      future: _openProgramBox(currentId),
+      future: _openProgramBox(currentStudentId),
       builder: (context, progSnap) {
         if (progSnap.connectionState != ConnectionState.done) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -146,7 +147,7 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
             final record = FinixDataService.decode(
               raw,
               module: 'program_bilgileri',
-              fallbackStudentId: currentId,
+              fallbackStudentId: currentStudentId,
             );
             if (!FinixDataService.isRecord(raw)) {
               unawaited(progBox.put(k, record.toMap()));
@@ -248,9 +249,11 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
   }
 
   Future<void> _prepareBoxAndLoadForDate() async {
-    final currentId = context.read<CurrentStudent>().currentId;
-    final boxName = currentId != null ? 'veri_kutusu_$currentId' : 'veri_kutusu';
-    _studentId = currentId;
+    final currentStudentId = context.read<CurrentStudent>().currentStudentId;
+    final boxName = currentStudentId != null
+        ? 'veri_kutusu_$currentStudentId'
+        : 'veri_kutusu';
+    _studentId = currentStudentId;
     _veriBox ??= await Hive.openBox(boxName);
     await _loadToday();
   }
@@ -466,8 +469,9 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
-    if (currentId == null) {
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
+    if (currentStudentId == null) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.programAdi)),
         body: const Center(child: Text('Lütfen bir öğrenci seçin')),

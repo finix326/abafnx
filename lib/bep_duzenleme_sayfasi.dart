@@ -79,7 +79,8 @@ class _BepDuzenlemeSayfasiState extends State<BepDuzenlemeSayfasi> {
   }
 
   Future<void> _save() async {
-    final currentId = context.read<CurrentStudent>().currentId;
+    final currentId =
+        context.read<CurrentStudent>().currentStudentId;
     final tarihStr = '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
 
     Map<String, dynamic> mapla(List<_HedefPair> list) => {

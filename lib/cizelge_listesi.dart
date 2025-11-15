@@ -88,7 +88,9 @@ class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
 
   @override
   Widget build(BuildContext context) {
-    final currentStudentId = context.watch<CurrentStudent>().currentId;
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
+    final normalizedCurrentId = currentStudentId?.trim();
 
     return Scaffold(
       appBar: AppBar(
@@ -111,7 +113,8 @@ class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
                     builder: (_) => AlertDialog(
                       title: const Text('Çizelgeler silinsin mi?'),
                       content: Text(
-                        (currentStudentId == null || currentStudentId.isEmpty)
+                        (normalizedCurrentId == null ||
+                            normalizedCurrentId.isEmpty)
                             ? 'Genel çizelgelerin hepsi silinecek.'
                             : 'Bu öğrenciye ait tüm çizelgeler silinecek.',
                       ),
@@ -175,8 +178,8 @@ class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
               });
 
               if (entries.isEmpty) {
-                final text = (currentStudentId == null ||
-                        currentStudentId.trim().isEmpty)
+                final text = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
                     ? 'Henüz genel çizelge yok. Sağ alttan ekleyin.'
                     : 'Bu öğrenci için çizelge yok. Sağ alttan ekleyin.';
                 return Center(

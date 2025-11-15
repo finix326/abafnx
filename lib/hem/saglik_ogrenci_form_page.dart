@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
+import 'package:provider/provider.dart';
 
 import 'saglik_box.dart';
+import '../app_state/current_student.dart';
 
 class SaglikOgrenciFormPage extends StatefulWidget {
   /// Kayıt düzenlemek için id + initial gönder.
@@ -93,6 +95,14 @@ class _SaglikOgrenciFormPageState extends State<SaglikOgrenciFormPage> {
     setState(() => _saving = true);
     try {
       final box = await ensureHealthBox();
+      final currentStudentId =
+          context.read<CurrentStudent>().currentStudentId;
+      if (currentStudentId == null || currentStudentId.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lütfen önce bir öğrenci seçin.')),
+        );
+        return;
+      }
 
       final data = {
         'ad': _ad.text.trim(),
@@ -110,6 +120,7 @@ class _SaglikOgrenciFormPageState extends State<SaglikOgrenciFormPage> {
         'updatedAt': DateTime.now().millisecondsSinceEpoch,
         'createdAt': widget.initial?['createdAt'] ??
             DateTime.now().millisecondsSinceEpoch,
+        'studentId': currentStudentId,
       };
 
       if (widget.id == null) {

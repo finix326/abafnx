@@ -252,7 +252,8 @@ class _TerapistDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
 
     return Drawer(
       child: ListView(
@@ -267,7 +268,7 @@ class _TerapistDrawer extends StatelessWidget {
               showStudentPickerSheet(context);
             },
           ),
-          if (currentId != null) const _AktifOgrenciTile(),
+          if (currentStudentId != null) const _AktifOgrenciTile(),
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.add_circle_outline),
@@ -309,13 +310,16 @@ class _TerapistDrawer extends StatelessWidget {
             onTap: () async {
               // GÜVENLİ YAPI: Önce context'e bağlı değişkenleri al
               final navigator = Navigator.of(context);
-              final studentId = context.read<CurrentStudent>().currentId;
+              final studentId =
+                  context.read<CurrentStudent>().currentStudentId;
 
               // Sonra context'i son kez kullan (pop)
               navigator.pop();
 
               // Sonra asenkron işlemi yap
-              final boxName = studentId != null ? 'bep_raporlari_$studentId' : 'bep_raporlari';
+              final boxName = studentId != null
+                  ? 'bep_raporlari_$studentId'
+                  : 'bep_raporlari';
               final box = await Hive.openBox(boxName);
 
               // Güvenli navigator ile yeni sayfayı aç
@@ -361,9 +365,12 @@ class _TerapistDrawerHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
+    final current = context.watch<CurrentStudent>();
+    final currentStudentId = current.currentStudentId;
     final students = Hive.box<Student>('students');
-    final ad = (currentId == null) ? null : (students.get(currentId)?.ad);
+    final ad = (currentStudentId == null)
+        ? null
+        : (students.get(currentStudentId)?.ad ?? current.currentStudent?.ad);
 
     return InkWell(
       onTap: () => showStudentPickerSheet(context),
@@ -393,9 +400,12 @@ class _AktifOgrenciTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
+    final current = context.watch<CurrentStudent>();
+    final currentStudentId = current.currentStudentId;
     final students = Hive.box<Student>('students');
-    final ad = (currentId == null) ? null : (students.get(currentId)?.ad);
+    final ad = (currentStudentId == null)
+        ? null
+        : (students.get(currentStudentId)?.ad ?? current.currentStudent?.ad);
 
     return ListTile(
       leading: const Icon(Icons.person_outline),

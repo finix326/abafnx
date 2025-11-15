@@ -61,7 +61,8 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
     );
     if (list.isEmpty) list.add('');
 
-    final fallback = context.read<CurrentStudent>().currentId?.trim();
+    final fallback =
+        context.read<CurrentStudent>().currentStudentId?.trim();
     final ownerFromBox = record?.studentId.trim();
     final owner = (ownerFromBox != null &&
             ownerFromBox.isNotEmpty &&
@@ -124,7 +125,9 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
           () => (_recordCreatedAt ?? record?.createdAt ?? now).millisecondsSinceEpoch);
 
     final fallbackOwner =
-        mounted ? context.read<CurrentStudent>().currentId?.trim() : null;
+        mounted
+            ? context.read<CurrentStudent>().currentStudentId?.trim()
+            : null;
     final owner = _ownerId?.trim() ?? fallbackOwner;
     _ownerId = owner?.isNotEmpty == true ? owner : null;
 

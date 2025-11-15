@@ -122,7 +122,7 @@ class _HafizaOyunuListesiSayfasiState
     );
 
     final box = await _getBox();
-    final studentId = context.read<CurrentStudent>().currentId;
+    final studentId = context.read<CurrentStudent>().currentStudentId;
     final record = FinixDataService.buildRecord(
       id: id,
       module: 'hafiza_oyunlari',
@@ -152,7 +152,8 @@ class _HafizaOyunuListesiSayfasiState
     final record = FinixDataService.decode(
       raw,
       module: 'hafiza_oyunlari',
-      fallbackStudentId: context.read<CurrentStudent>().currentId,
+      fallbackStudentId:
+          context.read<CurrentStudent>().currentStudentId,
     );
     final oyun = HafizaOyunu.fromMap(id, record.payload);
     final controller = TextEditingController(text: oyun.title);
@@ -187,7 +188,7 @@ class _HafizaOyunuListesiSayfasiState
     oyun.title = newTitle.isEmpty ? oyun.title : newTitle;
     final ownerId = record.studentId.isNotEmpty
         ? record.studentId
-        : (context.read<CurrentStudent>().currentId ?? 'unknown');
+        : (context.read<CurrentStudent>().currentStudentId ?? 'unknown');
     final updated = record.copyWith(
       studentId: ownerId,
       data: oyun.toMap(),
@@ -209,7 +210,9 @@ class _HafizaOyunuListesiSayfasiState
 
   @override
   Widget build(BuildContext context) {
-    final currentStudentId = context.watch<CurrentStudent>().currentId;
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
+    final normalizedCurrentId = currentStudentId?.trim();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Hafıza Oyunları'),
@@ -246,10 +249,10 @@ class _HafizaOyunuListesiSayfasiState
 
                 final ownerId = record.studentId.trim();
 
-                final matchesStudent = (currentStudentId == null ||
-                        currentStudentId.isEmpty)
+                final matchesStudent = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
                     ? ownerId.isEmpty || ownerId == 'unknown'
-                    : ownerId == currentStudentId;
+                    : ownerId == normalizedCurrentId;
 
                 if (!matchesStudent) continue;
 
@@ -262,8 +265,8 @@ class _HafizaOyunuListesiSayfasiState
               );
 
               if (oyunlar.isEmpty) {
-                final emptyText = (currentStudentId == null ||
-                        currentStudentId.isEmpty)
+                final emptyText = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
                     ? 'Henüz hafıza oyunu yok.\nSağ alttan yeni oluştur.'
                     : 'Bu öğrenci için hafıza oyunu yok.\nSağ alttan yeni oluştur.';
                 return Center(

@@ -31,7 +31,7 @@ class ProgramDetaySayfasi extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
+    final currentId = context.watch<CurrentStudent>().currentStudentId;
     if (currentId == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Program Detay')),
