@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -44,7 +45,7 @@ class _CizelgeDetayResimliSesliSayfasiState
   Directory? _cizelgeDir;
   late final Future<void> _initialLoad;
   String? _ownerId;
-  int? _recordCreatedAt;
+  DateTime? _recordCreatedAt;
   int _currentIndex = 0;
 
   @override
@@ -74,7 +75,8 @@ class _CizelgeDetayResimliSesliSayfasiState
       }
       existing = Map<String, dynamic>.from(record.payload);
       _recordCreatedAt = record.createdAt;
-      _ownerId = record.studentId;
+      final owner = record.studentId.trim();
+      _ownerId = owner.isEmpty || owner == 'unknown' ? null : owner;
     }
     final list = (existing['icerik'] as List?) ?? const [];
     final fallback =
@@ -138,7 +140,7 @@ class _CizelgeDetayResimliSesliSayfasiState
 
   Future<void> _saveSilent() async {
     final box = _box ?? await _boxFuture;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
     final raw = box.get(widget.cizelgeAdi);
     FinixRecord? record;
     if (raw is Map) {
@@ -163,8 +165,9 @@ class _CizelgeDetayResimliSesliSayfasiState
                 'metin': (e['metin'] ?? '').toString(),
               })
           .toList()
-      ..['updatedAt'] = now
-      ..putIfAbsent('createdAt', () => _recordCreatedAt ?? now);
+      ..['updatedAt'] = now.millisecondsSinceEpoch
+      ..putIfAbsent('createdAt', () =>
+          (_recordCreatedAt ?? record?.createdAt ?? now).millisecondsSinceEpoch);
 
     final fallback =
         mounted ? context.read<CurrentStudent>().currentId?.trim() : null;
@@ -172,15 +175,18 @@ class _CizelgeDetayResimliSesliSayfasiState
     _ownerId = owner?.isNotEmpty == true ? owner : null;
 
     final updatedRecord = FinixDataService.buildRecord(
+      id: widget.cizelgeAdi,
       module: 'cizelge',
-      payload: payload,
+      data: payload,
       studentId: _ownerId,
+      programName: widget.cizelgeAdi,
       createdAt: _recordCreatedAt ?? record?.createdAt ?? now,
       updatedAt: now,
     );
     _recordCreatedAt = updatedRecord.createdAt;
 
     await box.put(widget.cizelgeAdi, updatedRecord.toMap());
+    unawaited(FinixDataService.saveRecord(updatedRecord));
   }
 
   void _addCard() {

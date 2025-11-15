@@ -57,23 +57,26 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
     );
 
     if (onay == true && controller.text.trim().isNotEmpty) {
-      final createdAt = DateTime.now().millisecondsSinceEpoch;
-      final id = createdAt.toString();
+      final createdAt = DateTime.now();
+      final id = createdAt.millisecondsSinceEpoch.toString();
       final box = await _boxFuture;
       final studentId = context.read<CurrentStudent>().currentId?.trim();
       final data = {
         'id': id,
         'ad': controller.text.trim(),
         'kartlar': <Map<String, dynamic>>[],
-        'createdAt': createdAt,
+        'createdAt': createdAt.millisecondsSinceEpoch,
       };
       final record = FinixDataService.buildRecord(
+        id: id,
         module: 'kart_dizileri',
-        payload: data,
+        data: data,
         studentId: studentId,
+        programName: data['ad']?.toString(),
         createdAt: createdAt,
       );
       await box.put(id, record.toMap());
+      unawaited(FinixDataService.saveRecord(record));
       setState(() {});
     }
   }
@@ -117,19 +120,19 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
                   unawaited(box.put(key, record.toMap()));
                 }
 
-                final ownerId = record.studentId?.trim();
+                final ownerId = record.studentId.trim();
 
                 final matchesStudent = (currentStudentId == null ||
                         currentStudentId.isEmpty)
-                    ? (ownerId == null || ownerId.isEmpty)
+                    ? ownerId.isEmpty || ownerId == 'unknown'
                     : ownerId == currentStudentId;
 
                 if (!matchesStudent) continue;
 
                 final normalized = Map<String, dynamic>.from(record.payload);
                 normalized['id'] = normalized['id'] ?? key.toString();
-                normalized['createdAt'] =
-                    normalized['createdAt'] ?? record.createdAt;
+                normalized['createdAt'] = normalized['createdAt'] ??
+                    record.createdAt.millisecondsSinceEpoch;
                 normalized['kartlar'] =
                     List<Map<String, dynamic>>.from((normalized['kartlar']
                             as List? ??

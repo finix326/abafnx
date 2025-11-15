@@ -124,13 +124,16 @@ class _HafizaOyunuListesiSayfasiState
     final box = await _getBox();
     final studentId = context.read<CurrentStudent>().currentId;
     final record = FinixDataService.buildRecord(
+      id: id,
       module: 'hafiza_oyunlari',
-      payload: oyun.toMap(),
+      data: oyun.toMap(),
       studentId: studentId,
-      createdAt: oyun.createdAt,
+      programName: oyun.title,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(oyun.createdAt),
     );
 
     await box.put(id, record.toMap());
+    unawaited(FinixDataService.saveRecord(record));
 
     if (!mounted) return;
     Navigator.push(
@@ -182,15 +185,18 @@ class _HafizaOyunuListesiSayfasiState
 
     if (newTitle == null) return;
     oyun.title = newTitle.isEmpty ? oyun.title : newTitle;
-    final ownerId = record.studentId ??
-        context.read<CurrentStudent>().currentId;
+    final ownerId = record.studentId.isNotEmpty
+        ? record.studentId
+        : (context.read<CurrentStudent>().currentId ?? 'unknown');
     final updated = record.copyWith(
       studentId: ownerId,
-      payload: oyun.toMap(),
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
+      data: oyun.toMap(),
+      programName: oyun.title,
+      updatedAt: DateTime.now(),
     );
 
     await box.put(id, updated.toMap());
+    unawaited(FinixDataService.saveRecord(updated));
   }
 
   Future<void> _oyunSil(String id) async {
@@ -198,6 +204,7 @@ class _HafizaOyunuListesiSayfasiState
     // istersen ileride buraya ekleyebiliriz.
     final box = await _getBox();
     await box.delete(id);
+    unawaited(FinixDataService.deleteRecord('hafiza_oyunlari', id));
   }
 
   @override
@@ -207,7 +214,7 @@ class _HafizaOyunuListesiSayfasiState
       appBar: AppBar(
         title: const Text('Hafıza Oyunları'),
       ),
-      body: FutureBuilder<Box>(
+      body: FutureBuilder<Box<Map<dynamic, dynamic>>>(
         future: _boxFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
@@ -237,11 +244,11 @@ class _HafizaOyunuListesiSayfasiState
                   unawaited(box.put(key, record.toMap()));
                 }
 
-                final ownerId = record.studentId?.trim();
+                final ownerId = record.studentId.trim();
 
                 final matchesStudent = (currentStudentId == null ||
                         currentStudentId.isEmpty)
-                    ? (ownerId == null || ownerId.isEmpty)
+                    ? ownerId.isEmpty || ownerId == 'unknown'
                     : ownerId == currentStudentId;
 
                 if (!matchesStudent) continue;

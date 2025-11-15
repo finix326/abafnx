@@ -30,11 +30,15 @@ String _normalizeType(dynamic raw) {
 
 bool _matchesStudent(String? ownerId, String? currentId) {
   final trimmedOwner = ownerId?.trim();
+  final normalizedOwner =
+      (trimmedOwner == null || trimmedOwner.isEmpty || trimmedOwner == 'unknown')
+          ? null
+          : trimmedOwner;
   final trimmedCurrent = currentId?.trim();
   if (trimmedCurrent == null || trimmedCurrent.isEmpty) {
-    return trimmedOwner == null || trimmedOwner.isEmpty;
+    return normalizedOwner == null;
   }
-  return trimmedOwner == trimmedCurrent;
+  return normalizedOwner == trimmedCurrent;
 }
 
 class CizelgeListesiSayfasi extends StatefulWidget {
@@ -69,13 +73,16 @@ class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
       if (!FinixDataService.isRecord(raw)) {
         unawaited(box.put(key, record.toMap()));
       }
-      final ownerId = record.studentId?.trim();
+      final ownerId = record.studentId.trim();
       if (_matchesStudent(ownerId, currentStudentId)) {
         keysToDelete.add(key);
       }
     }
     for (final key in keysToDelete) {
       await box.delete(key);
+      unawaited(
+        FinixDataService.deleteRecord('cizelge', key.toString()),
+      );
     }
   }
 
@@ -155,7 +162,7 @@ class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
                 if (!FinixDataService.isRecord(raw)) {
                   unawaited(box.put(key, record.toMap()));
                 }
-                final ownerId = record.studentId?.trim();
+                final ownerId = record.studentId.trim();
                 if (!_matchesStudent(ownerId, currentStudentId)) continue;
 
                 entries.add(MapEntry(key, record));

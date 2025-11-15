@@ -34,9 +34,17 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
   String? _autoSelectKey;
   bool _didAutoSelect = false;
 
-  Map<String, dynamic> _normalizeProgram(dynamic v, {int? fallbackCreatedAt}) {
+  Map<String, dynamic> _normalizeProgram(dynamic v,
+      {DateTime? fallbackCreatedAt}) {
     if (v is Map) {
-      final createdAt = (v['createdAt'] as int?) ?? fallbackCreatedAt ?? 0;
+      final createdRaw = v['createdAt'];
+      final createdAt = createdRaw is int
+          ? createdRaw
+          : createdRaw is String
+              ? int.tryParse(createdRaw) ??
+                  fallbackCreatedAt?.millisecondsSinceEpoch ??
+                  0
+              : fallbackCreatedAt?.millisecondsSinceEpoch ?? 0;
       return {
         'programAdi': v['programAdi'] ?? v['ad'] ?? v['name'] ?? '',
         'tekrarSayisi': ((v['tekrarSayisi'] ?? 0) as num).toInt(),
@@ -145,7 +153,10 @@ class _ProgramListeSayfasiState extends State<_ProgramListeSayfasi> {
             }
             entries.add(MapEntry(
               k,
-              _normalizeProgram(record.payload, fallbackCreatedAt: record.createdAt),
+              _normalizeProgram(
+                record.payload,
+                fallbackCreatedAt: record.createdAt,
+              ),
             ));
           } else if (raw != null) {
             entries.add(MapEntry(k, _normalizeProgram(raw)));
@@ -327,12 +338,14 @@ class _ProgramVeriDetaySayfasiState extends State<ProgramVeriDetaySayfasi> {
 
     final record = FinixDataService.buildRecord(
       module: 'program_veri',
-      payload: rec,
+      data: rec,
       studentId: _studentId,
-      createdAt: now.millisecondsSinceEpoch,
-      updatedAt: now.millisecondsSinceEpoch,
+      programName: widget.programAdi,
+      createdAt: now,
+      updatedAt: now,
     );
     await _veriBox!.add(record.toMap());
+    unawaited(FinixDataService.saveRecord(record));
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kaydedildi')));

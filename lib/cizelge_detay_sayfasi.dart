@@ -32,7 +32,7 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
   bool _isLoaded = false;
   bool _isLoading = false;
   String? _ownerId;
-  int? _recordCreatedAt;
+  DateTime? _recordCreatedAt;
 
   @override
   void initState() {
@@ -62,9 +62,19 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
     if (list.isEmpty) list.add('');
 
     final fallback = context.read<CurrentStudent>().currentId?.trim();
-    final ownerFromBox = record?.studentId?.trim();
-    final owner =
-        (ownerFromBox != null && ownerFromBox.isNotEmpty) ? ownerFromBox : fallback;
+    final ownerFromBox = record?.studentId.trim();
+    final owner = (ownerFromBox != null &&
+            ownerFromBox.isNotEmpty &&
+            ownerFromBox != 'unknown')
+        ? ownerFromBox
+        : fallback;
+
+    final createdFromRecord = record?.createdAt;
+    final createdFromMap = (map['createdAt'] as int?);
+    final resolvedCreatedAt = createdFromRecord ??
+        (createdFromMap != null
+            ? DateTime.fromMillisecondsSinceEpoch(createdFromMap)
+            : DateTime.now());
 
     if (!mounted) return;
     setState(() {
@@ -75,8 +85,7 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
         ..clear()
         ..addAll(List<Color>.generate(_icerik.length, (_) => Colors.white));
       _ownerId = owner;
-      _recordCreatedAt = record?.createdAt ??
-          (map['createdAt'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+      _recordCreatedAt = resolvedCreatedAt;
       _isLoaded = true;
       _isLoading = false;
     });
@@ -91,7 +100,7 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
 
   Future<void> _kaydet() async {
     final box = _box ?? await _boxFuture;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
     final raw = box.get(widget.cizelgeAdi);
     FinixRecord? record;
     if (raw is Map) {
@@ -110,8 +119,9 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
     payload
       ..['tur'] = 'yazili'
       ..['icerik'] = List<String>.from(_icerik)
-      ..['updatedAt'] = now
-      ..putIfAbsent('createdAt', () => _recordCreatedAt ?? now);
+      ..['updatedAt'] = now.millisecondsSinceEpoch
+      ..putIfAbsent('createdAt',
+          () => (_recordCreatedAt ?? record?.createdAt ?? now).millisecondsSinceEpoch);
 
     final fallbackOwner =
         mounted ? context.read<CurrentStudent>().currentId?.trim() : null;
@@ -119,15 +129,18 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
     _ownerId = owner?.isNotEmpty == true ? owner : null;
 
     final updatedRecord = FinixDataService.buildRecord(
+      id: widget.cizelgeAdi,
       module: 'cizelge',
-      payload: payload,
+      data: payload,
       studentId: _ownerId,
+      programName: widget.cizelgeAdi,
       createdAt: _recordCreatedAt ?? record?.createdAt ?? now,
       updatedAt: now,
     );
     _recordCreatedAt = updatedRecord.createdAt;
 
     await box.put(widget.cizelgeAdi, updatedRecord.toMap());
+    unawaited(FinixDataService.saveRecord(updatedRecord));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('Kaydedildi')));

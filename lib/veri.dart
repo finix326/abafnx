@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:provider/provider.dart';
@@ -47,7 +49,7 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
     }
 
     final box = await _openProgramBox(currentId);
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
 
     final tekrar = int.tryParse(_tekrarCtrl.text.trim()) ?? 0;
     final gen = int.tryParse(_genellemeCtrl.text.trim()) ?? 0;
@@ -56,19 +58,21 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
       'programAdi': _adCtrl.text.trim(),
       'tekrarSayisi': tekrar,
       'genellemeSayisi': gen,
-      'createdAt': now,
+      'createdAt': now.millisecondsSinceEpoch,
       'isActive': true, // listeye düşsün; bitirince false yapılacak
     };
 
     final record = FinixDataService.buildRecord(
       module: 'program_bilgileri',
-      payload: kayit,
+      data: kayit,
       studentId: currentId,
+      programName: kayit['programAdi']?.toString(),
       createdAt: now,
       updatedAt: now,
     );
 
     await box.add(record.toMap());
+    unawaited(FinixDataService.saveRecord(record));
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

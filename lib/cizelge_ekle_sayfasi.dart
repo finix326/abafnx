@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
@@ -39,7 +41,7 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
 
     final kaydedilecekTur = widget.tur == 'yazili' ? 'yazili' : 'resimli_sesli';
     final box = await _boxFuture;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
     final studentId = context.read<CurrentStudent>().currentId?.trim();
 
     final data = <String, dynamic>{
@@ -47,18 +49,21 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
       'cizelgeAdi': ad,
       'tur': kaydedilecekTur,
       'icerik': <Map<String, dynamic>>[],
-      'createdAt': now,
-      'updatedAt': now,
+      'createdAt': now.millisecondsSinceEpoch,
+      'updatedAt': now.millisecondsSinceEpoch,
     };
     final record = FinixDataService.buildRecord(
+      id: ad,
       module: 'cizelge',
-      payload: data,
+      data: data,
       studentId: studentId,
+      programName: ad,
       createdAt: now,
       updatedAt: now,
     );
 
     await box.put(ad, record.toMap());
+    unawaited(FinixDataService.saveRecord(record));
 
     final hedefSayfa = kaydedilecekTur == 'yazili'
         ? CizelgeDetaySayfasi(cizelgeAdi: ad, tur: kaydedilecekTur)

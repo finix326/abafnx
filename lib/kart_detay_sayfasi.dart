@@ -28,7 +28,7 @@ class KartDetaySayfasi extends StatefulWidget {
 class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
   late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
   String? _ownerId;
-  int? _recordCreatedAt;
+  DateTime? _recordCreatedAt;
 
   // Grid boyut kontrolü (kalıcı)
   // maxExtent küçükse daha çok sütun sığar, büyütürsen kareler büyür.
@@ -83,7 +83,10 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
     if (!FinixDataService.isRecord(raw)) {
       unawaited(box.put(widget.diziId, record.toMap()));
     }
-    _ownerId ??= record.studentId;
+    final normalizedOwner = record.studentId.trim();
+    if (normalizedOwner.isNotEmpty && normalizedOwner != 'unknown') {
+      _ownerId ??= normalizedOwner;
+    }
     _recordCreatedAt ??= record.createdAt;
     return record;
   }
@@ -96,11 +99,12 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
       ..['grid_max_extent'] = _maxExtent;
     final updated = record.copyWith(
       studentId: _ownerId,
-      payload: updatedPayload,
+      data: updatedPayload,
       createdAt: _recordCreatedAt ?? record.createdAt,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
+      updatedAt: DateTime.now(),
     );
     await box.put(widget.diziId, updated.toMap());
+    unawaited(FinixDataService.saveRecord(updated));
   }
 
   Future<void> _yeniKartEkle() async {
@@ -117,12 +121,13 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
     dizi['kartlar'] = kartlar;
     final updated = record.copyWith(
       studentId: _ownerId,
-      payload: dizi,
+      data: dizi,
       createdAt: _recordCreatedAt ?? record.createdAt,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
+      updatedAt: DateTime.now(),
     );
     await box.put(widget.diziId, updated.toMap());
     setState(() {});
+    unawaited(FinixDataService.saveRecord(updated));
   }
 
   Future<void> _fotoEkle(Map<String, dynamic> kart) async {
@@ -159,12 +164,13 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
     dizi['kartlar'] = kartlar;
     final updated = record.copyWith(
       studentId: _ownerId,
-      payload: dizi,
+      data: dizi,
       createdAt: _recordCreatedAt ?? record.createdAt,
-      updatedAt: DateTime.now().millisecondsSinceEpoch,
+      updatedAt: DateTime.now(),
     );
     await box.put(widget.diziId, updated.toMap());
     setState(() {});
+    unawaited(FinixDataService.saveRecord(updated));
   }
 
   Future<bool> _ensureMic() async {

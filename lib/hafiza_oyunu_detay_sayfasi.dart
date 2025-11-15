@@ -26,7 +26,7 @@ class _HafizaOyunuDetaySayfasiState extends State<HafizaOyunuDetaySayfasi>
   late final Box<Map<dynamic, dynamic>> _box;
   HafizaOyunu? _oyun;
   String? _ownerId;
-  int? _recordCreatedAt;
+  DateTime? _recordCreatedAt;
   bool _hazirMod = true;
 
   List<String> _deck = [];
@@ -69,7 +69,7 @@ class _HafizaOyunuDetaySayfasiState extends State<HafizaOyunuDetaySayfasi>
 
     setState(() {
       _oyun = oyun;
-      _ownerId = record.studentId;
+      _ownerId = record.studentId.isEmpty ? null : record.studentId;
       _recordCreatedAt = record.createdAt;
       // Eğer tüm görseller seçiliyse, bu sayfaya girildiğinde direkt oyun moduna hazırlanacağız
       _hazirMod = !allImagesSelected;
@@ -87,15 +87,19 @@ class _HafizaOyunuDetaySayfasiState extends State<HafizaOyunuDetaySayfasi>
 
   Future<void> _saveGame() async {
     if (_oyun == null) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
     final record = FinixDataService.buildRecord(
+      id: _oyun!.id,
       module: 'hafiza_oyunlari',
-      payload: _oyun!.toMap(),
+      data: _oyun!.toMap(),
       studentId: _ownerId,
-      createdAt: _recordCreatedAt ?? _oyun!.createdAt,
+      programName: _oyun!.title,
+      createdAt:
+          _recordCreatedAt ?? DateTime.fromMillisecondsSinceEpoch(_oyun!.createdAt),
       updatedAt: now,
     );
     await _box.put(_oyun!.id, record.toMap());
+    unawaited(FinixDataService.saveRecord(record));
   }
 
   Future<void> _pickImageForIndex(int index) async {
