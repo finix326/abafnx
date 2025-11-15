@@ -90,16 +90,22 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: FinixAIButton.iconOnly(
+              module: 'program_bilgileri',
               contextDescription: 'ABA programı için hedef ve yönerge metni öner',
-                initialText: _adCtrl.text,
-                onResult: (aiText) {
-                  if (!mounted) return;
-                  setState(() {
-                    _adCtrl.text = aiText;
-                  });
-                },
-              ),
+              initialText: _adCtrl.text,
+              onResult: (aiText) {
+                if (!mounted) return;
+                setState(() {
+                  _adCtrl.text = aiText;
+                });
+              },
+              programNameBuilder: () {
+                final trimmed = _adCtrl.text.trim();
+                return trimmed.isEmpty ? null : trimmed;
+              },
+              logMetadata: const {'scope': 'program_app_bar'},
             ),
+          ),
         ],
       ),
       body: SafeArea(
@@ -125,16 +131,22 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
                     ),
                     const SizedBox(width: 8),
                     FinixAIButton.small(
+                      module: 'program_bilgileri',
                       contextDescription:
                           'ABA programı için hedef ve yönerge metni öner',
-                    initialText: _adCtrl.text,
-                    onResult: (aiText) {
-                      if (!mounted) return;
-                      setState(() {
-                        _adCtrl.text = aiText;
-                      });
-                    },
-                  ),
+                      initialText: _adCtrl.text,
+                      onResult: (aiText) {
+                        if (!mounted) return;
+                        setState(() {
+                          _adCtrl.text = aiText;
+                        });
+                      },
+                      programNameBuilder: () {
+                        final trimmed = _adCtrl.text.trim();
+                        return trimmed.isEmpty ? null : trimmed;
+                      },
+                      logMetadata: const {'scope': 'program_field'},
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),

@@ -507,6 +507,7 @@ class _CizelgeDetayResimliSesliSayfasiState
                 ),
                 const SizedBox(width: 12),
                 FinixAIButton.small(
+                  module: 'cizelge',
                   contextDescription:
                       'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
                   initialText: (m['metin'] ?? '').toString(),
@@ -517,6 +518,14 @@ class _CizelgeDetayResimliSesliSayfasiState
                       // TODO: Çok adımlı yanıtları kartlara paylaştır.
                     });
                     _saveSilent();
+                  },
+                  programNameBuilder: () {
+                    final trimmed = widget.cizelgeAdi.trim();
+                    return trimmed.isEmpty ? null : trimmed;
+                  },
+                  logMetadata: {
+                    'mode': 'resimli_sesli',
+                    'cardIndex': index,
                   },
                 ),
               ],
@@ -552,27 +561,32 @@ class _CizelgeDetayResimliSesliSayfasiState
           appBar: AppBar(
             title: Text('Çizelge: ${widget.cizelgeAdi}'),
             actions: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: FinixAIButton.iconOnly(
-                  contextDescription:
-                      'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
-                  initialText: _icerik.isEmpty
-                      ? ''
-                      : (_icerik[_currentIndex]['metin'] ?? '').toString(),
-                  onResult: (aiText) {
-                    if (!mounted) return;
-                    setState(() {
-                      if (_icerik.isEmpty) {
-                        _icerik.add({'resimPath': null, 'sesPath': null, 'metin': aiText});
-                      } else {
-                        _icerik[_currentIndex]['metin'] = aiText;
-                      }
-                    });
-                    _saveSilent();
-                  },
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: FinixAIButton.iconOnly(
+                    module: 'cizelge',
+                    contextDescription:
+                        'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                    initialText: _icerik.isEmpty
+                        ? ''
+                        : (_icerik[_currentIndex]['metin'] ?? '').toString(),
+                    onResult: (aiText) {
+                      if (!mounted) return;
+                      setState(() {
+                        if (_icerik.isEmpty) {
+                          _icerik.add({'resimPath': null, 'sesPath': null, 'metin': aiText});
+                        } else {
+                          _icerik[_currentIndex]['metin'] = aiText;
+                        }
+                      });
+                      _saveSilent();
+                    },
+                    programName: widget.cizelgeAdi,
+                    logMetadata: const {
+                      'scope': 'resimli_sesli_app_bar',
+                    },
+                  ),
                 ),
-              ),
               IconButton(
                 tooltip: 'Kart Ekle',
                 icon: const Icon(Icons.add),

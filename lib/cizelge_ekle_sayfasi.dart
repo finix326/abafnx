@@ -92,10 +92,19 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: FinixAIButton.iconOnly(
+              module: 'cizelge',
               contextDescription:
                   'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
               initialText: _controller.text,
               onResult: _applyAISuggestion,
+              programNameBuilder: () {
+                final trimmed = _controller.text.trim();
+                return trimmed.isEmpty ? null : trimmed;
+              },
+              logMetadata: {
+                'scope': 'cizelge_create_app_bar',
+                'type': widget.tur,
+              },
             ),
           ),
         ],
@@ -118,15 +127,24 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  FinixAIButton.small(
-                    contextDescription:
-                        'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
-                    initialText: _controller.text,
-                    onResult: _applyAISuggestion,
-                  ),
-                ],
-              ),
+                const SizedBox(width: 8),
+                FinixAIButton.small(
+                  module: 'cizelge',
+                  contextDescription:
+                      'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                  initialText: _controller.text,
+                  onResult: _applyAISuggestion,
+                  programNameBuilder: () {
+                    final trimmed = _controller.text.trim();
+                    return trimmed.isEmpty ? null : trimmed;
+                  },
+                  logMetadata: {
+                    'scope': 'cizelge_create_field',
+                    'type': widget.tur,
+                  },
+                ),
+              ],
+            ),
               const SizedBox(height: 16),
               SizedBox(
                 height: 48,

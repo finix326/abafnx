@@ -135,17 +135,23 @@ class _BepDuzenlemeSayfasiState extends State<BepDuzenlemeSayfasi> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('BEP Düzenleme'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: FinixAIButton.iconOnly(
-              contextDescription: 'BEP hedefi ve kısa vadeli amaçlar için metin öner',
-              initialText: _problemDavranis.text,
-              onResult: _handleGlobalAISuggestion,
+          actions: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: FinixAIButton.iconOnly(
+                module: 'bep',
+                contextDescription: 'BEP hedefi ve kısa vadeli amaçlar için metin öner',
+                initialText: _problemDavranis.text,
+                onResult: _handleGlobalAISuggestion,
+                programNameBuilder: () {
+                  final trimmed = _ad.text.trim();
+                  return trimmed.isEmpty ? 'BEP Raporu' : trimmed;
+                },
+                logMetadata: const {'scope': 'bep_app_bar'},
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
@@ -217,6 +223,10 @@ class _BepDuzenlemeSayfasiState extends State<BepDuzenlemeSayfasi> {
                 pairs: _alanlar[alan]!,
                 onAdd: () => _addPair(alan),
                 onRemove: (i) => _removePair(alan, i),
+                programNameBuilder: () {
+                  final trimmed = _ad.text.trim();
+                  return trimmed.isEmpty ? 'BEP Raporu' : trimmed;
+                },
               ),
               const SizedBox(height: 12),
             ],
@@ -250,37 +260,43 @@ class _BepDuzenlemeSayfasiState extends State<BepDuzenlemeSayfasi> {
     );
   }
 
-  Widget _inputWithAI(
-    TextEditingController controller,
-    String label, {
-    required String contextDescription,
-    int maxLines = 1,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              maxLines: maxLines,
-              decoration: InputDecoration(
-                labelText: label,
-                border: const OutlineInputBorder(),
+    Widget _inputWithAI(
+      TextEditingController controller,
+      String label, {
+      required String contextDescription,
+      int maxLines = 1,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                maxLines: maxLines,
+                decoration: InputDecoration(
+                  labelText: label,
+                  border: const OutlineInputBorder(),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          FinixAIButton.small(
-            contextDescription: contextDescription,
-            initialText: controller.text,
-            onResult: (aiText) => controller.text = aiText,
-          ),
-        ],
-      ),
-    );
-  }
+            const SizedBox(width: 8),
+            FinixAIButton.small(
+              module: 'bep',
+              contextDescription: contextDescription,
+              initialText: controller.text,
+              onResult: (aiText) => controller.text = aiText,
+              programNameBuilder: () {
+                final trimmed = _ad.text.trim();
+                return trimmed.isEmpty ? 'BEP Raporu' : trimmed;
+              },
+              logMetadata: {'field': label},
+            ),
+          ],
+        ),
+      );
+    }
 }
 
 class _HedefPair {
@@ -293,6 +309,7 @@ class _AlanKart extends StatelessWidget {
   final List<_HedefPair> pairs;
   final VoidCallback onAdd;
   final void Function(int) onRemove;
+  final String? Function()? programNameBuilder;
 
   const _AlanKart({
     super.key,
@@ -300,6 +317,7 @@ class _AlanKart extends StatelessWidget {
     required this.pairs,
     required this.onAdd,
     required this.onRemove,
+    this.programNameBuilder,
   });
 
   @override
@@ -345,10 +363,17 @@ class _AlanKart extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   FinixAIButton.small(
+                    module: 'bep',
                     contextDescription:
                         'BEP hedefi ve kısa vadeli amaçlar için metin öner',
                     initialText: pairs[i].uzun.text,
                     onResult: (aiText) => pairs[i].uzun.text = aiText,
+                    programNameBuilder: programNameBuilder,
+                    logMetadata: {
+                      'field': 'uzun_hedef',
+                      'alan': baslik,
+                      'index': i,
+                    },
                   ),
                 ],
               ),
@@ -368,10 +393,17 @@ class _AlanKart extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   FinixAIButton.small(
+                    module: 'bep',
                     contextDescription:
                         'BEP hedefi ve kısa vadeli amaçlar için metin öner',
                     initialText: pairs[i].kisa.text,
                     onResult: (aiText) => pairs[i].kisa.text = aiText,
+                    programNameBuilder: programNameBuilder,
+                    logMetadata: {
+                      'field': 'kisa_hedef',
+                      'alan': baslik,
+                      'index': i,
+                    },
                   ),
                 ],
               ),
@@ -382,7 +414,7 @@ class _AlanKart extends StatelessWidget {
                   onPressed: () => onRemove(i),
                   icon: const Icon(Icons.delete_outline),
                 ),
-              )
+              ),
             ],
           ],
         ),
@@ -390,3 +422,4 @@ class _AlanKart extends StatelessWidget {
     );
   }
 }
+

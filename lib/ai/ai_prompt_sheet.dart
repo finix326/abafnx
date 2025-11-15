@@ -2,7 +2,21 @@ import 'package:flutter/material.dart';
 
 import 'ai_engine.dart';
 
-Future<String?> showAIPromptSheet({
+class AIPromptSheetResult {
+  const AIPromptSheetResult({
+    required this.prompt,
+    required this.result,
+    required this.contextDescription,
+    this.initialText,
+  });
+
+  final String prompt;
+  final String result;
+  final String contextDescription;
+  final String? initialText;
+}
+
+Future<AIPromptSheetResult?> showAIPromptSheet({
   required BuildContext context,
   required String contextDescription,
   String? initialText,
@@ -13,7 +27,7 @@ Future<String?> showAIPromptSheet({
   String? aiResult;
   bool isLoading = false;
 
-  final result = await showModalBottomSheet<String>(
+  final result = await showModalBottomSheet<AIPromptSheetResult>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -176,9 +190,21 @@ Future<String?> showAIPromptSheet({
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: () {
-                        if (aiResult == null) return;
-                        onResult?.call(aiResult!);
-                        Navigator.of(sheetContext).pop(aiResult);
+                        final resolved = aiResult?.trim();
+                        if (resolved == null || resolved.isEmpty) return;
+
+                        final prompt = promptController.text.trim();
+                        final initial = contextController.text.trim();
+
+                        onResult?.call(resolved);
+                        Navigator.of(sheetContext).pop(
+                          AIPromptSheetResult(
+                            prompt: prompt,
+                            result: resolved,
+                            contextDescription: contextDescription.trim(),
+                            initialText: initial.isEmpty ? null : initial,
+                          ),
+                        );
                       },
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),

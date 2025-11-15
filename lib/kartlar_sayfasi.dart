@@ -43,10 +43,15 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
             ),
             const SizedBox(width: 8),
             FinixAIButton.small(
+              module: 'kart_dizileri',
               contextDescription:
                   'Bu kart için açıklama ve kullanım yönergesi öner',
               initialText: controller.text,
               onResult: (aiText) => controller.text = aiText,
+              programNameBuilder: () {
+                final trimmed = controller.text.trim();
+                return trimmed.isEmpty ? null : trimmed;
+              },
             ),
           ],
         ),

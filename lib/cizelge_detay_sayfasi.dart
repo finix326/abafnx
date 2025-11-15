@@ -205,6 +205,7 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 child: FinixAIButton.iconOnly(
+                  module: 'cizelge',
                   contextDescription:
                       'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
                   initialText: _icerik.join('\n'),
@@ -227,6 +228,8 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
                         ..addAll(List<Color>.filled(_icerik.length, Colors.white));
                     });
                   },
+                  programName: widget.cizelgeAdi,
+                  logMetadata: const {'scope': 'cizelge_app_bar'},
                 ),
               ),
               IconButton(icon: const Icon(Icons.save), onPressed: _kaydet),
@@ -264,23 +267,29 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
                                     const InputDecoration(border: InputBorder.none),
                                 maxLines: null,
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            FinixAIButton.small(
-                              contextDescription:
-                                  'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
-                              initialText: controller.text,
-                              onResult: (aiText) {
-                                controller.text = aiText;
-                                if (!mounted) return;
-                                setState(() {
-                                  _icerik[i] = aiText;
-                                  // TODO: Çok adımlı yanıtları ayrı kartlara dağıt.
-                                });
-                              },
-                            ),
-                          ],
-                        ),
+                              ),
+                              const SizedBox(width: 12),
+                              FinixAIButton.small(
+                                module: 'cizelge',
+                                contextDescription:
+                                    'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                                initialText: controller.text,
+                                onResult: (aiText) {
+                                  controller.text = aiText;
+                                  if (!mounted) return;
+                                  setState(() {
+                                    _icerik[i] = aiText;
+                                    // TODO: Çok adımlı yanıtları ayrı kartlara dağıt.
+                                  });
+                                },
+                                programName: widget.cizelgeAdi,
+                                logMetadata: {
+                                  'index': i,
+                                  'scope': 'cizelge_detay',
+                                },
+                              ),
+                        ],
+                      ),
                         _renkButonlari(i),
                       ],
                     ),

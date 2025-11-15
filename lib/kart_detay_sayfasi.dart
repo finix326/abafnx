@@ -437,16 +437,19 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
             return Scaffold(
               appBar: AppBar(
                 title: Text(widget.diziAdi),
-                actions: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: FinixAIButton.iconOnly(
-                      contextDescription:
-                          'Bu kart için açıklama ve kullanım yönergesi öner',
-                      initialText: '',
-                      onResult: _applyGlobalAISuggestion,
+                  actions: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: FinixAIButton.iconOnly(
+                        module: 'kart_dizileri',
+                        contextDescription:
+                            'Bu kart için açıklama ve kullanım yönergesi öner',
+                        initialText: '',
+                        onResult: _applyGlobalAISuggestion,
+                        programName: widget.diziAdi,
+                        logMetadata: const {'scope': 'kart_detay_app_bar'},
+                      ),
                     ),
-                  ),
                   IconButton(
                     tooltip: 'Boyut',
                     icon: const Icon(Icons.aspect_ratio_outlined),
@@ -583,21 +586,27 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
                                       },
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  FinixAIButton.small(
-                                    contextDescription:
-                                        'Bu kart için açıklama ve kullanım yönergesi öner',
-                                    initialText: textController.text,
-                                    onResult: (aiText) {
-                                      textController.text = aiText;
-                                      kart['metin'] = aiText;
-                                      _guncelleKart(kart);
-                                      if (!mounted) return;
-                                      setState(() {});
-                                    },
-                                  ),
-                                ],
-                              ),
+                                    const SizedBox(width: 8),
+                                    FinixAIButton.small(
+                                      module: 'kart_dizileri',
+                                      contextDescription:
+                                          'Bu kart için açıklama ve kullanım yönergesi öner',
+                                      initialText: textController.text,
+                                      onResult: (aiText) {
+                                        textController.text = aiText;
+                                        kart['metin'] = aiText;
+                                        _guncelleKart(kart);
+                                        if (!mounted) return;
+                                        setState(() {});
+                                      },
+                                      programName: widget.diziAdi,
+                                      logMetadata: {
+                                        'cardId': id,
+                                        'scope': 'kart_detay',
+                                      },
+                                    ),
+                                  ],
+                                ),
                             ),
                           ],
                         ),

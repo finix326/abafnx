@@ -221,10 +221,12 @@ class _EslestirmeOyunListesiPageState extends State<EslestirmeOyunListesiPage> {
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FinixAIButton.small(
+              module: 'eslestirme_oyunu',
               contextDescription: 'Eşleştirme oyunu üretim asistanı',
               onResult: (response) {
                 _createGameFromAI(response);
               },
+              programName: 'Eşleştirme Oyunları',
             ),
           ),
         ],
