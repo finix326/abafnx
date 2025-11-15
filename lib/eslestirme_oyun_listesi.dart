@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import 'ai/ai_prompt_sheet.dart';
+import 'ai/finix_ai_button.dart';
 
 import 'eslestirme_oyun_duzenle.dart';
 import 'eslestirme_oyun_oynat.dart';
@@ -218,14 +218,14 @@ class _EslestirmeOyunListesiPageState extends State<EslestirmeOyunListesiPage> {
       appBar: AppBar(
         title: const Text('Eşleştirme Oyunları'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.auto_awesome),
-            onPressed: () {
-              showAIPromptSheet(
-                context: context,
-                onCompleted: _createGameFromAI,
-              );
-            },
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FinixAIButton.small(
+              contextDescription: 'Eşleştirme oyunu üretim asistanı',
+              onResult: (response) {
+                _createGameFromAI(response);
+              },
+            ),
           ),
         ],
       ),
