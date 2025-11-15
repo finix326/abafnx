@@ -84,7 +84,24 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Yeni Program Oluştur')),
+      appBar: AppBar(
+        title: const Text('Yeni Program Oluştur'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: FinixAIButton.iconOnly(
+              contextDescription: 'ABA programı için hedef ve yönerge metni öner',
+                initialText: _adCtrl.text,
+                onResult: (aiText) {
+                  if (!mounted) return;
+                  setState(() {
+                    _adCtrl.text = aiText;
+                  });
+                },
+              ),
+            ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -110,13 +127,14 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
                     FinixAIButton.small(
                       contextDescription:
                           'ABA programı için hedef ve yönerge metni öner',
-                      initialText: _adCtrl.text,
-                      onResult: (aiText) {
-                        setState(() {
-                          _adCtrl.text = aiText;
-                        });
-                      },
-                    ),
+                    initialText: _adCtrl.text,
+                    onResult: (aiText) {
+                      if (!mounted) return;
+                      setState(() {
+                        _adCtrl.text = aiText;
+                      });
+                    },
+                  ),
                   ],
                 ),
                 const SizedBox(height: 12),

@@ -78,6 +78,16 @@ class _BepDuzenlemeSayfasiState extends State<BepDuzenlemeSayfasi> {
     setState(() => _alanlar[alan]!.removeAt(index));
   }
 
+  void _handleGlobalAISuggestion(String aiText) {
+    if (!mounted) return;
+    setState(() {
+      _problemDavranis.text = aiText;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('AI önerisi problem davranış alanına uygulandı.')),
+    );
+  }
+
   Future<void> _save() async {
     final currentId =
         context.read<CurrentStudent>().currentStudentId;
@@ -125,6 +135,16 @@ class _BepDuzenlemeSayfasiState extends State<BepDuzenlemeSayfasi> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('BEP Düzenleme'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: FinixAIButton.iconOnly(
+              contextDescription: 'BEP hedefi ve kısa vadeli amaçlar için metin öner',
+              initialText: _problemDavranis.text,
+              onResult: _handleGlobalAISuggestion,
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(
@@ -239,8 +259,7 @@ class _BepDuzenlemeSayfasiState extends State<BepDuzenlemeSayfasi> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
-        crossAxisAlignment:
-            maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: TextField(

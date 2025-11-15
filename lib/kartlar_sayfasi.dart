@@ -33,6 +33,7 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
       builder: (_) => AlertDialog(
         title: const Text('Yeni Kart Dizisi'),
         content: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: TextField(

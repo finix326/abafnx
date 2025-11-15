@@ -173,6 +173,61 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
     unawaited(FinixDataService.saveRecord(updated));
   }
 
+  Future<void> _applyGlobalAISuggestion(String aiText) async {
+    final trimmed = aiText.trim();
+    if (trimmed.isEmpty) return;
+
+    final suggestions = trimmed
+        .split(RegExp(r'\r?\n'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (suggestions.isEmpty) return;
+
+    final box = await _boxFuture;
+    final record = _readRecord(box);
+    if (record == null) return;
+
+    final dizi = Map<String, dynamic>.from(record.payload);
+    final List<Map<String, dynamic>> kartlar = List<Map<String, dynamic>>.from(
+      (dizi['kartlar'] as List? ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>)),
+    );
+
+    bool updated = false;
+    for (final suggestion in suggestions) {
+      final existingIndex = kartlar.indexWhere(
+        (kart) => (kart['metin'] ?? '').toString().trim().isEmpty,
+      );
+      if (existingIndex != -1) {
+        kartlar[existingIndex]['metin'] = suggestion;
+        updated = true;
+        continue;
+      }
+
+      final id = DateTime.now().microsecondsSinceEpoch.toString();
+      kartlar.add({'id': id, 'foto': null, 'ses': null, 'metin': suggestion});
+      updated = true;
+    }
+
+    if (!updated) return;
+
+    dizi['kartlar'] = kartlar;
+    final updatedRecord = record.copyWith(
+      studentId: _ownerId,
+      data: dizi,
+      createdAt: _recordCreatedAt ?? record.createdAt,
+      updatedAt: DateTime.now(),
+    );
+    await box.put(widget.diziId, updatedRecord.toMap());
+    if (!mounted) return;
+    setState(() {});
+    unawaited(FinixDataService.saveRecord(updatedRecord));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('AI önerileri kartlara eklendi.')),
+    );
+  }
+
   Future<bool> _ensureMic() async {
     var st = await Permission.microphone.status;
     if (st.isDenied || st.isRestricted || st.isPermanentlyDenied) {
@@ -383,6 +438,15 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
               appBar: AppBar(
                 title: Text(widget.diziAdi),
                 actions: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: FinixAIButton.iconOnly(
+                      contextDescription:
+                          'Bu kart için açıklama ve kullanım yönergesi öner',
+                      initialText: '',
+                      onResult: _applyGlobalAISuggestion,
+                    ),
+                  ),
                   IconButton(
                     tooltip: 'Boyut',
                     icon: const Icon(Icons.aspect_ratio_outlined),
@@ -399,139 +463,149 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
                 onPressed: _yeniKartEkle,
                 child: const Icon(Icons.add),
               ),
-              body: GridView.builder(
-                padding: const EdgeInsets.all(10),
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: _maxExtent, // slider ile kontrol
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 0.95, // kare + metin
-                ),
-                itemCount: kartlar.length,
-                itemBuilder: (_, i) {
-                  final Map<String, dynamic> kart =
-                      Map<String, dynamic>.from(kartlar[i]);
-          final String id = kart['id'] as String;
-          final bool fotoVar = (kart['foto'] != null && (kart['foto'] as String).isNotEmpty);
-          final bool sesVar = (kart['ses'] != null && (kart['ses'] as String).isNotEmpty);
-          final bool recording = (_recordingCardId == id);
-          final textController =
-              TextEditingController(text: (kart['metin'] ?? '').toString());
+              body: SafeArea(
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: _maxExtent, // slider ile kontrol
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childAspectRatio: 0.95, // kare + metin
+                  ),
+                  itemCount: kartlar.length,
+                  itemBuilder: (_, i) {
+                    final Map<String, dynamic> kart =
+                        Map<String, dynamic>.from(kartlar[i]);
+                    final String id = kart['id'] as String;
+                    final bool fotoVar =
+                        (kart['foto'] != null && (kart['foto'] as String).isNotEmpty);
+                    final bool sesVar =
+                        (kart['ses'] != null && (kart['ses'] as String).isNotEmpty);
+                    final bool recording = (_recordingCardId == id);
+                    final textController =
+                        TextEditingController(text: (kart['metin'] ?? '').toString());
 
-                  return GestureDetector(
-                    onTap: sesVar ? () => _playOrStop(kart) : null,
-                    onLongPress: () => _kartMenusu(context, kart),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.blueGrey.shade200, width: 1.5),
-                      ),
-                      child: Column(
-                        children: [
-                  // KARE BÖLGE
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: fotoVar
-                              ? ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.file(
-                              File(kart['foto']),
-                              width: double.infinity,
-                              height: double.infinity,
-                              fit: BoxFit.cover, // taşma yok, kareyi doldur
-                            ),
-                          )
-                              : const Center(
-                            child: Icon(Icons.add_photo_alternate_outlined, size: 38),
-                          ),
+                    return GestureDetector(
+                      onTap: sesVar ? () => _playOrStop(kart) : null,
+                      onLongPress: () => _kartMenusu(context, kart),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blueGrey.shade200, width: 1.5),
                         ),
-
-                        // SES KAYIT BUTONU (başlangıçta mikrofon; kayıt sırasında kare/stop)
-                        if (!sesVar || recording)
-                          Positioned(
-                            right: 8,
-                            bottom: 8,
-                            child: GestureDetector(
-                              onTap: () async {
-                                if (recording) {
-                                  await _stopRec(kart);
-                                } else {
-                                  await _startRec(kart);
-                                }
-                              },
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: recording ? Colors.red : Colors.white70,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.08),
-                                      blurRadius: 6,
-                                    )
-                                  ],
-                                ),
-                                padding: const EdgeInsets.all(8),
-                                child: Icon(
-                                  recording ? Icons.stop_rounded : Icons.mic,
-                                  size: 22,
-                                  color: recording ? Colors.white : Colors.redAccent,
-                                ),
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: Stack(
+                                children: [
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: fotoVar
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(12),
+                                            child: Image.file(
+                                              File(kart['foto']),
+                                              width: double.infinity,
+                                              height: double.infinity,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          )
+                                        : const Center(
+                                            child: Icon(
+                                              Icons.add_photo_alternate_outlined,
+                                              size: 38,
+                                            ),
+                                          ),
+                                  ),
+                                  if (!sesVar || recording)
+                                    Positioned(
+                                      right: 8,
+                                      bottom: 8,
+                                      child: GestureDetector(
+                                        onTap: () async {
+                                          if (recording) {
+                                            await _stopRec(kart);
+                                          } else {
+                                            await _startRec(kart);
+                                          }
+                                        },
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: recording
+                                                ? Colors.red
+                                                : Colors.white70,
+                                            shape: BoxShape.circle,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withOpacity(0.08),
+                                                blurRadius: 6,
+                                              )
+                                            ],
+                                          ),
+                                          padding: const EdgeInsets.all(8),
+                                          child: Icon(
+                                            recording ? Icons.stop_rounded : Icons.mic,
+                                            size: 22,
+                                            color: recording ? Colors.white : Colors.redAccent,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
-                          ),
-                      ],
-                    ),
-                  ),
-
-                  // METİN KUTUSU (kalıcı)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: textController,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              hintText: 'Metin ekle...',
-                              border: OutlineInputBorder(),
-                              contentPadding:
-                                  EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: textController,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      decoration: const InputDecoration(
+                                        isDense: true,
+                                        hintText: 'Metin ekle...',
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          vertical: 6,
+                                          horizontal: 8,
+                                        ),
+                                      ),
+                                      onChanged: (v) {
+                                        kart['metin'] = v;
+                                        _guncelleKart(kart);
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FinixAIButton.small(
+                                    contextDescription:
+                                        'Bu kart için açıklama ve kullanım yönergesi öner',
+                                    initialText: textController.text,
+                                    onResult: (aiText) {
+                                      textController.text = aiText;
+                                      kart['metin'] = aiText;
+                                      _guncelleKart(kart);
+                                      if (!mounted) return;
+                                      setState(() {});
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
-                            onChanged: (v) {
-                              kart['metin'] = v;
-                              _guncelleKart(kart);
-                            },
-                          ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        FinixAIButton.small(
-                          contextDescription:
-                              'Bu kart için açıklama ve kullanım yönergesi öner',
-                          initialText: textController.text,
-                          onResult: (aiText) {
-                            textController.text = aiText;
-                            kart['metin'] = aiText;
-                            _guncelleKart(kart);
-                            setState(() {});
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
           );
         },
       ),

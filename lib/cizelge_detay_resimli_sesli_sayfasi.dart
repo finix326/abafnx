@@ -511,6 +511,7 @@ class _CizelgeDetayResimliSesliSayfasiState
                       'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
                   initialText: (m['metin'] ?? '').toString(),
                   onResult: (aiText) {
+                    if (!mounted) return;
                     setState(() {
                       _icerik[index]['metin'] = aiText;
                       // TODO: Çok adımlı yanıtları kartlara paylaştır.
@@ -560,6 +561,7 @@ class _CizelgeDetayResimliSesliSayfasiState
                       ? ''
                       : (_icerik[_currentIndex]['metin'] ?? '').toString(),
                   onResult: (aiText) {
+                    if (!mounted) return;
                     setState(() {
                       if (_icerik.isEmpty) {
                         _icerik.add({'resimPath': null, 'sesPath': null, 'metin': aiText});
@@ -578,11 +580,13 @@ class _CizelgeDetayResimliSesliSayfasiState
               ),
             ],
           ),
-          body: PageView.builder(
-            controller: _page,
-            onPageChanged: (i) => setState(() => _currentIndex = i),
-            itemCount: _icerik.length,
-            itemBuilder: (_, i) => _buildCard(i),
+          body: SafeArea(
+            child: PageView.builder(
+              controller: _page,
+              onPageChanged: (i) => setState(() => _currentIndex = i),
+              itemCount: _icerik.length,
+              itemBuilder: (_, i) => _buildCard(i),
+            ),
           ),
         );
       },

@@ -214,6 +214,7 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
                         .map((e) => e.trim())
                         .where((e) => e.isNotEmpty)
                         .toList();
+                    if (!mounted) return;
                     setState(() {
                       final steps = suggestions.isEmpty
                           ? <String>[aiText.trim()]
@@ -234,56 +235,59 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
                 icon: const Icon(Icons.view_agenda),
                 tooltip: 'Kart modunda göster',
                 onPressed: () {
-                  // Sade: Liste görünümünden kart görünümüne hızlı geçiş
                   _pageController.jumpToPage(0);
                 },
               ),
             ],
           ),
-          body: ListView.builder(
-            itemCount: _icerik.length,
-            itemBuilder: (context, i) {
-              final controller = TextEditingController(text: _icerik[i]);
-              return Card(
-                margin: const EdgeInsets.all(12),
-                color: _renkler[i],
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: controller,
-                              onChanged: (v) => _icerik[i] = v,
-                              decoration:
-                                  const InputDecoration(border: InputBorder.none),
-                              maxLines: null,
+          body: SafeArea(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _icerik.length,
+              itemBuilder: (context, i) {
+                final controller = TextEditingController(text: _icerik[i]);
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  color: _renkler[i],
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: controller,
+                                onChanged: (v) => _icerik[i] = v,
+                                decoration:
+                                    const InputDecoration(border: InputBorder.none),
+                                maxLines: null,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          FinixAIButton.small(
-                            contextDescription:
-                                'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
-                            initialText: controller.text,
-                            onResult: (aiText) {
-                              controller.text = aiText;
-                              setState(() {
-                                _icerik[i] = aiText;
-                                // TODO: Çok adımlı yanıtları ayrı kartlara dağıt.
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-                      _renkButonlari(i),
-                    ],
+                            const SizedBox(width: 12),
+                            FinixAIButton.small(
+                              contextDescription:
+                                  'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                              initialText: controller.text,
+                              onResult: (aiText) {
+                                controller.text = aiText;
+                                if (!mounted) return;
+                                setState(() {
+                                  _icerik[i] = aiText;
+                                  // TODO: Çok adımlı yanıtları ayrı kartlara dağıt.
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                        _renkButonlari(i),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         );
       },

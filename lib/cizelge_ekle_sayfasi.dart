@@ -23,6 +23,11 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
   final TextEditingController _controller = TextEditingController();
   late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
 
+  void _applyAISuggestion(String aiText) {
+    if (!mounted) return;
+    setState(() => _controller.text = aiText);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -81,37 +86,58 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
     final turYazi = widget.tur == 'yazili' ? 'Yazılı' : 'Resimli/Sesli';
 
     return Scaffold(
-      appBar: AppBar(title: Text('Yeni Çizelge ($turYazi)')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: const InputDecoration(
-                      labelText: 'Çizelge Adı',
-                      border: OutlineInputBorder(),
+      appBar: AppBar(
+        title: Text('Yeni Çizelge ($turYazi)'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: FinixAIButton.iconOnly(
+              contextDescription:
+                  'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+              initialText: _controller.text,
+              onResult: _applyAISuggestion,
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Çizelge Adı',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  FinixAIButton.small(
+                    contextDescription:
+                        'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                    initialText: _controller.text,
+                    onResult: _applyAISuggestion,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 48,
+                child: FilledButton.icon(
+                  onPressed: _kaydet,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Oluştur'),
                 ),
-                const SizedBox(width: 8),
-                FinixAIButton.small(
-                  contextDescription:
-                      'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
-                  initialText: _controller.text,
-                  onResult: (aiText) => _controller.text = aiText,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _kaydet,
-              child: const Text('Oluştur'),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
