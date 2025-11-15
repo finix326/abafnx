@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:provider/provider.dart';
 
+import 'ai/finix_ai_button.dart';
 import 'app_state/current_student.dart';
+import 'services/finix_data_service.dart';
 
 class VeriSayfasi extends StatefulWidget {
   const VeriSayfasi({super.key});
@@ -36,16 +40,16 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
   Future<void> _kaydet() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final currentId = context.read<CurrentStudent>().currentId;
-    if (currentId == null) {
+    final currentStudentId = context.read<CurrentStudent>().currentStudentId;
+    if (currentStudentId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Lütfen önce bir öğrenci seçin')),
       );
       return;
     }
 
-    final box = await _openProgramBox(currentId);
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final box = await _openProgramBox(currentStudentId);
+    final now = DateTime.now();
 
     final tekrar = int.tryParse(_tekrarCtrl.text.trim()) ?? 0;
     final gen = int.tryParse(_genellemeCtrl.text.trim()) ?? 0;
@@ -54,11 +58,21 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
       'programAdi': _adCtrl.text.trim(),
       'tekrarSayisi': tekrar,
       'genellemeSayisi': gen,
-      'createdAt': now,
+      'createdAt': now.millisecondsSinceEpoch,
       'isActive': true, // listeye düşsün; bitirince false yapılacak
     };
 
-    await box.add(kayit);
+    final record = FinixDataService.buildRecord(
+      module: 'program_bilgileri',
+      data: kayit,
+      studentId: currentStudentId,
+      programName: kayit['programAdi']?.toString(),
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await box.add(record.toMap());
+    unawaited(FinixDataService.saveRecord(record));
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -70,7 +84,30 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Yeni Program Oluştur')),
+      appBar: AppBar(
+        title: const Text('Yeni Program Oluştur'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: FinixAIButton.iconOnly(
+              module: 'program_bilgileri',
+              contextDescription: 'ABA programı için hedef ve yönerge metni öner',
+              initialText: _adCtrl.text,
+              onResult: (aiText) {
+                if (!mounted) return;
+                setState(() {
+                  _adCtrl.text = aiText;
+                });
+              },
+              programNameBuilder: () {
+                final trimmed = _adCtrl.text.trim();
+                return trimmed.isEmpty ? null : trimmed;
+              },
+              logMetadata: const {'scope': 'program_app_bar'},
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -78,14 +115,39 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
             key: _formKey,
             child: ListView(
               children: [
-                TextFormField(
-                  controller: _adCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Program adı (örn. Tak-Çıkar)',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Zorunlu' : null,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _adCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Program adı (örn. Tak-Çıkar)',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty) ? 'Zorunlu' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FinixAIButton.small(
+                      module: 'program_bilgileri',
+                      contextDescription:
+                          'ABA programı için hedef ve yönerge metni öner',
+                      initialText: _adCtrl.text,
+                      onResult: (aiText) {
+                        if (!mounted) return;
+                        setState(() {
+                          _adCtrl.text = aiText;
+                        });
+                      },
+                      programNameBuilder: () {
+                        final trimmed = _adCtrl.text.trim();
+                        return trimmed.isEmpty ? null : trimmed;
+                      },
+                      logMetadata: const {'scope': 'program_field'},
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 Row(

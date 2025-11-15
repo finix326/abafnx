@@ -1,117 +1,217 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state/current_student.dart';
-
-// Detay sayfaları (sizdeki imzalar korunuyor)
-import 'cizelge_detay_sayfasi.dart';
 import 'cizelge_detay_resimli_sesli_sayfasi.dart';
+import 'cizelge_detay_sayfasi.dart';
 import 'cizelge_ekle_sayfasi.dart';
+import 'services/finix_data_service.dart';
 
-/// Öğrenciye özel kutu adı (yoksa genel kutuya düşer)
-String _boxNameForStudent(String? studentId) =>
-    (studentId != null && studentId.isNotEmpty)
-        ? 'cizelge_kutusu_$studentId'
-        : 'cizelge_kutusu';
-
-/// Eski/yanlış değerleri güvenli bir şekilde normalize et.
 String _normalizeType(dynamic raw) {
   final s = (raw ?? '').toString().toLowerCase().trim();
-  if (s == 'yazili' || s == 'yazılı' || s == 'text' || s == 'yazi' || s == 'yazı') {
+  if (s == 'yazili' ||
+      s == 'yazılı' ||
+      s == 'text' ||
+      s == 'yazi' ||
+      s == 'yazı') {
     return 'yazili';
   }
-  if (s == 'resimli_sesli' || s == 'media' || s.contains('resim') || s.contains('ses')) {
+  if (s == 'resimli_sesli' ||
+      s == 'media' ||
+      s.contains('resim') ||
+      s.contains('ses')) {
     return 'resimli_sesli';
   }
-  // bilinmiyorsa yazılıya düş
   return 'yazili';
 }
 
-class CizelgeListesiSayfasi extends StatelessWidget {
+bool _matchesStudent(String? ownerId, String? currentId) {
+  final trimmedOwner = ownerId?.trim();
+  final normalizedOwner =
+      (trimmedOwner == null || trimmedOwner.isEmpty || trimmedOwner == 'unknown')
+          ? null
+          : trimmedOwner;
+  final trimmedCurrent = currentId?.trim();
+  if (trimmedCurrent == null || trimmedCurrent.isEmpty) {
+    return normalizedOwner == null;
+  }
+  return normalizedOwner == trimmedCurrent;
+}
+
+class CizelgeListesiSayfasi extends StatefulWidget {
   const CizelgeListesiSayfasi({super.key});
 
-  Future<Box> _openBox(BuildContext context) async {
-    final currentId = context.read<CurrentStudent?>()?.currentId;
-    return Hive.openBox(_boxNameForStudent(currentId));
+  @override
+  State<CizelgeListesiSayfasi> createState() => _CizelgeListesiSayfasiState();
+}
+
+class _CizelgeListesiSayfasiState extends State<CizelgeListesiSayfasi> {
+  late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _boxFuture = Hive.openBox<Map<dynamic, dynamic>>('cizelge_kutusu');
+  }
+
+  Future<void> _clearForStudent(
+    Box<Map<dynamic, dynamic>> box,
+    String? currentStudentId,
+  ) async {
+    final keysToDelete = <dynamic>[];
+    for (final key in box.keys) {
+      final raw = box.get(key);
+      if (raw is! Map) continue;
+      final record = FinixDataService.decode(
+        raw,
+        module: 'cizelge',
+        fallbackStudentId: currentStudentId,
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        unawaited(box.put(key, record.toMap()));
+      }
+      final ownerId = record.studentId.trim();
+      if (_matchesStudent(ownerId, currentStudentId)) {
+        keysToDelete.add(key);
+      }
+    }
+    for (final key in keysToDelete) {
+      await box.delete(key);
+      unawaited(
+        FinixDataService.deleteRecord('cizelge', key.toString()),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Öğrenci değişiminde rebuild olsun
-    final currentId = context.watch<CurrentStudent?>()?.currentId;
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
+    final normalizedCurrentId = currentStudentId?.trim();
 
-    return FutureBuilder<Box>(
-      future: _openBox(context),
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        if (!snap.hasData) {
-          return Scaffold(
-            appBar: AppBar(title: const Text('Çizelgeler')),
-            body: const Center(child: Text('Kutu açılamadı')),
-          );
-        }
-        final box = snap.data!;
-
-        return Scaffold(
-          appBar: AppBar(
-            title: Text('Çizelgeler${currentId != null ? "  (Öğrenci: $currentId)" : ""}'),
-            actions: [
-              IconButton(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Çizelgeler'),
+        actions: [
+          FutureBuilder<Box<Map<dynamic, dynamic>>>(
+            future: _boxFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done ||
+                  !snapshot.hasData) {
+                return const SizedBox.shrink();
+              }
+              final box = snapshot.data!;
+              return IconButton(
                 tooltip: 'Tümünü temizle',
                 icon: const Icon(Icons.delete_sweep_outlined),
                 onPressed: () async {
-                  final ok = await showDialog<bool>(
+                  final onay = await showDialog<bool>(
                     context: context,
                     builder: (_) => AlertDialog(
-                      title: const Text('Tüm çizelgeler silinsin mi?'),
-                      content: const Text('Bu işlem geri alınamaz.'),
+                      title: const Text('Çizelgeler silinsin mi?'),
+                      content: Text(
+                        (normalizedCurrentId == null ||
+                            normalizedCurrentId.isEmpty)
+                            ? 'Genel çizelgelerin hepsi silinecek.'
+                            : 'Bu öğrenciye ait tüm çizelgeler silinecek.',
+                      ),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
-                        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sil')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Vazgeç'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('Sil'),
+                        ),
                       ],
                     ),
                   );
-                  if (ok == true) await box.clear();
+                  if (onay == true) {
+                    await _clearForStudent(box, currentStudentId);
+                  }
                 },
-              ),
-            ],
+              );
+            },
           ),
-          body: ValueListenableBuilder(
+        ],
+      ),
+      body: FutureBuilder<Box<Map<dynamic, dynamic>>>(
+        future: _boxFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: Text('Çizelge kutusu açılamadı.'));
+          }
+
+          final box = snapshot.data!;
+          return ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
             valueListenable: box.listenable(),
             builder: (context, _, __) {
-              final entries = box.keys.map((k) {
-                final v = box.get(k);
-                return MapEntry(k, Map<String, dynamic>.from((v as Map?) ?? {}));
-              }).toList()
-                ..sort((a, b) {
-                  final at = (a.value['createdAt'] ?? 0) as int;
-                  final bt = (b.value['createdAt'] ?? 0) as int;
-                  return bt.compareTo(at); // yeni en üstte
-                });
+              final entries = <MapEntry<dynamic, FinixRecord>>[];
+              for (final key in box.keys) {
+                final raw = box.get(key);
+                if (raw is! Map) continue;
+                final record = FinixDataService.decode(
+                  raw,
+                  module: 'cizelge',
+                  fallbackStudentId: currentStudentId,
+                );
+                if (!FinixDataService.isRecord(raw)) {
+                  unawaited(box.put(key, record.toMap()));
+                }
+                final ownerId = record.studentId.trim();
+                if (!_matchesStudent(ownerId, currentStudentId)) continue;
+
+                entries.add(MapEntry(key, record));
+              }
+
+              entries.sort((a, b) {
+                final at = a.value.createdAt;
+                final bt = b.value.createdAt;
+                return bt.compareTo(at);
+              });
 
               if (entries.isEmpty) {
-                return const Center(child: Text('Henüz çizelge yok. Sağ alttan ekleyin.'));
+                final text = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
+                    ? 'Henüz genel çizelge yok. Sağ alttan ekleyin.'
+                    : 'Bu öğrenci için çizelge yok. Sağ alttan ekleyin.';
+                return Center(
+                  child: Text(
+                    text,
+                    textAlign: TextAlign.center,
+                  ),
+                );
               }
 
               return ListView.separated(
                 itemCount: entries.length,
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (_, i) {
-                  final e = entries[i];
-                  final m = e.value;
+                  final entry = entries[i];
+                  final map = Map<String, dynamic>.from(entry.value.payload);
 
-                  final tur = _normalizeType(m['tur'] ?? m['type']);
-                  final ad = (m['ad'] ?? m['cizelgeAdi'] ?? e.key.toString()).toString();
+                  final tur = _normalizeType(map['tur'] ?? map['type']);
+                  final ad = (map['ad'] ??
+                          map['cizelgeAdi'] ??
+                          entry.key.toString())
+                      .toString();
 
                   final emoji = tur == 'resimli_sesli' ? '🖼️🎙️' : '📝';
-                  final subtitle = tur == 'resimli_sesli' ? 'Resimli / Sesli' : 'Yazılı';
+                  final subtitle =
+                      tur == 'resimli_sesli' ? 'Resimli / Sesli' : 'Yazılı';
 
                   return ListTile(
-                    leading: Text(emoji, style: const TextStyle(fontSize: 22)),
+                    leading: Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 22),
+                    ),
                     title: Text(ad),
                     subtitle: Text(subtitle),
                     trailing: const Icon(Icons.chevron_right),
@@ -121,7 +221,7 @@ class CizelgeListesiSayfasi extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (_) => CizelgeDetayResimliSesliSayfasi(
-                              cizelgeAdi: e.key.toString(),
+                              cizelgeAdi: entry.key.toString(),
                             ),
                           ),
                         );
@@ -130,7 +230,7 @@ class CizelgeListesiSayfasi extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (_) => CizelgeDetaySayfasi(
-                              cizelgeAdi: e.key.toString(),
+                              cizelgeAdi: entry.key.toString(),
                               tur: 'yazili',
                             ),
                           ),
@@ -141,42 +241,45 @@ class CizelgeListesiSayfasi extends StatelessWidget {
                 },
               );
             },
-          ),
-          floatingActionButton: FloatingActionButton(
-            tooltip: 'Çizelge ekle',
-            child: const Icon(Icons.add),
-            onPressed: () async {
-              // tür seçtir → mevcut CizelgeEkleSayfasi(tur: ...) sayfasına gönder
-              final picked = await showModalBottomSheet<String>(
-                context: context,
-                builder: (_) => SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ListTile(
-                        leading: const Text('📝', style: TextStyle(fontSize: 20)),
-                        title: const Text('Yazılı Çizelge'),
-                        onTap: () => Navigator.pop(context, 'yazili'),
-                      ),
-                      ListTile(
-                        leading: const Text('🖼️🎙️', style: TextStyle(fontSize: 20)),
-                        title: const Text('Resimli + Sesli Çizelge'),
-                        onTap: () => Navigator.pop(context, 'resimli_sesli'),
-                      ),
-                    ],
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Çizelge ekle',
+        child: const Icon(Icons.add),
+        onPressed: () async {
+          final picked = await showModalBottomSheet<String>(
+            context: context,
+            builder: (_) => SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: const Text('📝', style: TextStyle(fontSize: 20)),
+                    title: const Text('Yazılı Çizelge'),
+                    onTap: () => Navigator.pop(context, 'yazili'),
                   ),
-                ),
-              );
-              if (picked == null) return;
+                  ListTile(
+                    leading: const Text('🖼️🎙️', style: TextStyle(fontSize: 20)),
+                    title: const Text('Resimli + Sesli Çizelge'),
+                    onTap: () => Navigator.pop(context, 'resimli_sesli'),
+                  ),
+                ],
+              ),
+            ),
+          );
+          if (picked == null) return;
 
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => CizelgeEkleSayfasi(tur: _normalizeType(picked))),
-              );
-            },
-          ),
-        );
-      },
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CizelgeEkleSayfasi(
+                tur: _normalizeType(picked),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

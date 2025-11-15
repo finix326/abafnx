@@ -1,12 +1,27 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../student.dart';
+
 class CurrentStudent extends ChangeNotifier {
   static const _prefsBox = 'app_prefs';
   static const _key = 'currentStudentId';
 
   String? _currentId;
+
+  /// Tercih edilen erişim noktası: aktif öğrencinin kimliği.
+  String? get currentStudentId => _currentId;
+
+  @Deprecated('currentStudentId kullanın')
   String? get currentId => _currentId;
+
+  Student? get currentStudent {
+    final id = _currentId;
+    if (id == null) return null;
+    if (!Hive.isBoxOpen('students')) return null;
+    final box = Hive.box<Student>('students');
+    return box.get(id);
+  }
 
   Future<void> load() async {
     final box = await Hive.openBox(_prefsBox);

@@ -1,10 +1,15 @@
 // lib/hafiza_oyunu_listesi_sayfasi.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
 
 import 'hafiza_oyunu_model.dart';
 import 'hafiza_oyunu_detay_sayfasi.dart';
+import 'app_state/current_student.dart';
+import 'services/finix_data_service.dart';
 
 class HafizaOyunuListesiSayfasi extends StatefulWidget {
   const HafizaOyunuListesiSayfasi({super.key});
@@ -16,90 +21,119 @@ class HafizaOyunuListesiSayfasi extends StatefulWidget {
 
 class _HafizaOyunuListesiSayfasiState
     extends State<HafizaOyunuListesiSayfasi> {
-  late final Box _box;
+  late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
 
   @override
   void initState() {
     super.initState();
-    _box = Hive.box('hafiza_oyunlari');
+    _boxFuture = Hive.openBox<Map<dynamic, dynamic>>('hafiza_oyunlari');
   }
 
-  Future<void> _yeniOyunOlustur() async {
-    int pairCount = 3; // varsayılan 3 çift (6 kart)
-    final titleController = TextEditingController(text: 'Yeni Hafıza Oyunu');
+  Future<Box<Map<dynamic, dynamic>>> _getBox() => _boxFuture;
 
-    final result = await showDialog<Map<String, dynamic>?>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Yeni Hafıza Oyunu'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: const InputDecoration(
-                labelText: 'Oyun adı',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Text('Kaç çift olsun?'),
-                const SizedBox(width: 8),
-                DropdownButton<int>(
-                  value: pairCount,
-                  items: const [
-                    DropdownMenuItem(value: 2, child: Text('2 çift (4 kart)')),
-                    DropdownMenuItem(value: 3, child: Text('3 çift (6 kart)')),
-                    DropdownMenuItem(value: 4, child: Text('4 çift (8 kart)')),
-                    DropdownMenuItem(value: 5, child: Text('5 çift (10 kart)')),
-                    DropdownMenuItem(value: 6, child: Text('6 çift (12 kart)')),
+  Future<void> _yeniOyunOlustur() async {
+    final titleController = TextEditingController(text: 'Yeni Hafıza Oyunu');
+    Map<String, dynamic>? result;
+    try {
+      result = await showDialog<Map<String, dynamic>?>(
+        context: context,
+        builder: (_) {
+          int pairCount = 3; // varsayılan 3 çift (6 kart)
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Yeni Hafıza Oyunu'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: titleController,
+                      decoration: const InputDecoration(
+                        labelText: 'Oyun adı',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Text('Kaç çift olsun?'),
+                        const SizedBox(width: 8),
+                        DropdownButton<int>(
+                          value: pairCount,
+                          items: const [
+                            DropdownMenuItem(
+                                value: 2, child: Text('2 çift (4 kart)')),
+                            DropdownMenuItem(
+                                value: 3, child: Text('3 çift (6 kart)')),
+                            DropdownMenuItem(
+                                value: 4, child: Text('4 çift (8 kart)')),
+                            DropdownMenuItem(
+                                value: 5, child: Text('5 çift (10 kart)')),
+                            DropdownMenuItem(
+                                value: 6, child: Text('6 çift (12 kart)')),
+                          ],
+                          onChanged: (val) {
+                            if (val == null) return;
+                            setState(() {
+                              pairCount = val;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
                   ],
-                  onChanged: (val) {
-                    if (val == null) return;
-                    pairCount = val;
-                    (context as Element).markNeedsBuild();
-                  },
                 ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, null),
-            child: const Text('İptal'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context, {
-                'title': titleController.text.trim(),
-                'pairCount': pairCount,
-              });
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, null),
+                    child: const Text('İptal'),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(context, {
+                        'title': titleController.text.trim(),
+                        'pairCount': pairCount,
+                      });
+                    },
+                    child: const Text('Oluştur'),
+                  ),
+                ],
+              );
             },
-            child: const Text('Oluştur'),
-          ),
-        ],
-      ),
-    );
+          );
+        },
+      );
+    } finally {
+      titleController.dispose();
+    }
 
     if (result == null) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = now.toString();
 
+    final rawTitle = (result['title'] as String?)?.trim() ?? '';
     final oyun = HafizaOyunu(
       id: id,
-      title: result['title'].isEmpty
-          ? 'Yeni Hafıza Oyunu'
-          : result['title'] as String,
-      pairCount: result['pairCount'] as int,
+      title: rawTitle.isEmpty ? 'Yeni Hafıza Oyunu' : rawTitle,
+      pairCount: (result['pairCount'] as int?) ?? 3,
       imagePaths: <String>[],
       createdAt: now,
     );
 
-    await _box.put(id, oyun.toMap());
+    final box = await _getBox();
+    final studentId = context.read<CurrentStudent>().currentStudentId;
+    final record = FinixDataService.buildRecord(
+      id: id,
+      module: 'hafiza_oyunlari',
+      data: oyun.toMap(),
+      studentId: studentId,
+      programName: oyun.title,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(oyun.createdAt),
+    );
+
+    await box.put(id, record.toMap());
+    unawaited(FinixDataService.saveRecord(record));
 
     if (!mounted) return;
     Navigator.push(
@@ -111,8 +145,17 @@ class _HafizaOyunuListesiSayfasiState
   }
 
   Future<void> _oyunYenidenAdlandir(String id) async {
-    final raw = (_box.get(id) as Map?) ?? {};
-    final oyun = HafizaOyunu.fromMap(id, raw);
+    final box = await _getBox();
+    final raw = box.get(id);
+    if (raw is! Map) return;
+
+    final record = FinixDataService.decode(
+      raw,
+      module: 'hafiza_oyunlari',
+      fallbackStudentId:
+          context.read<CurrentStudent>().currentStudentId,
+    );
+    final oyun = HafizaOyunu.fromMap(id, record.payload);
     final controller = TextEditingController(text: oyun.title);
 
     final newTitle = await showDialog<String?>(
@@ -143,104 +186,167 @@ class _HafizaOyunuListesiSayfasiState
 
     if (newTitle == null) return;
     oyun.title = newTitle.isEmpty ? oyun.title : newTitle;
-    await _box.put(id, oyun.toMap());
+    final ownerId = record.studentId.isNotEmpty
+        ? record.studentId
+        : (context.read<CurrentStudent>().currentStudentId ?? 'unknown');
+    final updated = record.copyWith(
+      studentId: ownerId,
+      data: oyun.toMap(),
+      programName: oyun.title,
+      updatedAt: DateTime.now(),
+    );
+
+    await box.put(id, updated.toMap());
+    unawaited(FinixDataService.saveRecord(updated));
   }
 
   Future<void> _oyunSil(String id) async {
     // Şimdilik sadece kaydı siliyoruz, görselleri fiziksel olarak silmek
     // istersen ileride buraya ekleyebiliriz.
-    await _box.delete(id);
+    final box = await _getBox();
+    await box.delete(id);
+    unawaited(FinixDataService.deleteRecord('hafiza_oyunlari', id));
   }
 
   @override
   Widget build(BuildContext context) {
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
+    final normalizedCurrentId = currentStudentId?.trim();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Hafıza Oyunları'),
       ),
-      body: ValueListenableBuilder<Box>(
-        valueListenable: _box.listenable(),
-        builder: (context, box, _) {
-          final keys = box.keys.toList()
-            ..sort((a, b) => b.toString().compareTo(a.toString()));
-          if (keys.isEmpty) {
-            return const Center(
-              child: Text('Henüz hafıza oyunu yok.\nSağ alttan yeni oluştur.'),
-            );
+      body: FutureBuilder<Box<Map<dynamic, dynamic>>>(
+        future: _boxFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: Text('Hafıza oyunu kutusu açılamadı.'));
           }
 
-          return ListView.builder(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            itemCount: keys.length,
-            itemBuilder: (context, index) {
-              final key = keys[index];
-              final raw = (box.get(key) as Map?) ?? {};
-              final oyun = HafizaOyunu.fromMap(key.toString(), raw);
-              final totalCards = oyun.pairCount * 2;
+          final box = snapshot.data!;
 
-              final dt =
-              DateTime.fromMillisecondsSinceEpoch(oyun.createdAt);
-              final dateStr =
-                  '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+          return ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
+            valueListenable: box.listenable(),
+            builder: (context, _, __) {
+              final oyunlar = <HafizaOyunu>[];
 
-              return Card(
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.grid_view),
-                  ),
-                  title: Text(
-                    oyun.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle:
-                  Text('$dateStr · ${oyun.pairCount} çift ($totalCards kart)'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            HafizaOyunuDetaySayfasi(oyunId: oyun.id),
+              for (final key in box.keys) {
+                final raw = box.get(key);
+                if (raw is! Map) continue;
+
+                final record = FinixDataService.decode(
+                  raw,
+                  module: 'hafiza_oyunlari',
+                  fallbackStudentId: currentStudentId,
+                );
+                if (!FinixDataService.isRecord(raw)) {
+                  unawaited(box.put(key, record.toMap()));
+                }
+
+                final ownerId = record.studentId.trim();
+
+                final matchesStudent = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
+                    ? ownerId.isEmpty || ownerId == 'unknown'
+                    : ownerId == normalizedCurrentId;
+
+                if (!matchesStudent) continue;
+
+                final id = key.toString();
+                oyunlar.add(HafizaOyunu.fromMap(id, record.payload));
+              }
+
+              oyunlar.sort(
+                (a, b) => b.createdAt.compareTo(a.createdAt),
+              );
+
+              if (oyunlar.isEmpty) {
+                final emptyText = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
+                    ? 'Henüz hafıza oyunu yok.\nSağ alttan yeni oluştur.'
+                    : 'Bu öğrenci için hafıza oyunu yok.\nSağ alttan yeni oluştur.';
+                return Center(
+                  child: Text(emptyText,
+                      textAlign: TextAlign.center),
+                );
+              }
+
+              return ListView.builder(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                itemCount: oyunlar.length,
+                itemBuilder: (context, index) {
+                  final oyun = oyunlar[index];
+                  final totalCards = oyun.pairCount * 2;
+
+                  final dt =
+                      DateTime.fromMillisecondsSinceEpoch(oyun.createdAt);
+                  final dateStr =
+                      '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.grid_view),
                       ),
-                    );
-                  },
-                  onLongPress: () async {
-                    final act = await showModalBottomSheet<String>(
-                      context: context,
-                      builder: (_) => SafeArea(
-                        child: Wrap(
-                          children: [
-                            ListTile(
-                              leading: const Icon(Icons.edit),
-                              title: const Text('Oyun adını düzenle'),
-                              onTap: () =>
-                                  Navigator.pop(context, 'rename'),
-                            ),
-                            ListTile(
-                              leading: const Icon(Icons.delete_outline,
-                                  color: Colors.red),
-                              title: const Text('Oyun sil'),
-                              onTap: () =>
-                                  Navigator.pop(context, 'delete'),
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                        ),
+                      title: Text(
+                        oyun.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    );
-                    if (act == 'rename') {
-                      await _oyunYenidenAdlandir(oyun.id);
-                    } else if (act == 'delete') {
-                      await _oyunSil(oyun.id);
-                    }
-                  },
-                ),
+                      subtitle: Text(
+                          '$dateStr · ${oyun.pairCount} çift ($totalCards kart)'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                HafizaOyunuDetaySayfasi(oyunId: oyun.id),
+                          ),
+                        );
+                      },
+                      onLongPress: () async {
+                        final act = await showModalBottomSheet<String>(
+                          context: context,
+                          builder: (_) => SafeArea(
+                            child: Wrap(
+                              children: [
+                                ListTile(
+                                  leading: const Icon(Icons.edit),
+                                  title: const Text('Oyun adını düzenle'),
+                                  onTap: () =>
+                                      Navigator.pop(context, 'rename'),
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.delete_outline,
+                                      color: Colors.red),
+                                  title: const Text('Oyun sil'),
+                                  onTap: () =>
+                                      Navigator.pop(context, 'delete'),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                            ),
+                          ),
+                        );
+                        if (act == 'rename') {
+                          await _oyunYenidenAdlandir(oyun.id);
+                        } else if (act == 'delete') {
+                          await _oyunSil(oyun.id);
+                        }
+                      },
+                    ),
+                  );
+                },
               );
             },
           );

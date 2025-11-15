@@ -1,10 +1,17 @@
+import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_sound/flutter_sound.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
+
+import 'ai/finix_ai_button.dart';
+import 'app_state/current_student.dart';
+import 'services/finix_data_service.dart';
 
 class CizelgeDetayResimliSesliSayfasi extends StatefulWidget {
   final String cizelgeAdi;
@@ -21,7 +28,8 @@ class CizelgeDetayResimliSesliSayfasi extends StatefulWidget {
 
 class _CizelgeDetayResimliSesliSayfasiState
     extends State<CizelgeDetayResimliSesliSayfasi> {
-  final Box _box = Hive.box('cizelge_kutusu');
+  late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
+  Box<Map<dynamic, dynamic>>? _box;
 
   // Her kart: {'resimPath': String?, 'sesPath': String?, 'metin': String}
   final List<Map<String, dynamic>> _icerik = [];
@@ -35,34 +43,66 @@ class _CizelgeDetayResimliSesliSayfasiState
   int? _playingIndex;
 
   Directory? _cizelgeDir;
+  late final Future<void> _initialLoad;
+  String? _ownerId;
+  DateTime? _recordCreatedAt;
+  int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _recorder = FlutterSoundRecorder();
     _player = FlutterSoundPlayer();
-
-    _init();
+    _boxFuture = Hive.openBox<Map<dynamic, dynamic>>('cizelge_kutusu');
+    _initialLoad = _init();
   }
 
   Future<void> _init() async {
+    _box = await _boxFuture;
     await _player.openPlayer();
     await _recorder.openRecorder();
 
     _cizelgeDir = await _ensureCizelgeDir();
-    final data = _box.get(widget.cizelgeAdi) as Map?;
-    final list = (data != null && data['icerik'] is List) ? data['icerik'] as List : [];
+    Map<String, dynamic> existing = const <String, dynamic>{};
+    final raw = _box!.get(widget.cizelgeAdi);
+    if (raw is Map) {
+      final record = FinixDataService.decode(
+        raw,
+        module: 'cizelge',
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        await _box!.put(widget.cizelgeAdi, record.toMap());
+      }
+      existing = Map<String, dynamic>.from(record.payload);
+      _recordCreatedAt = record.createdAt;
+      final owner = record.studentId.trim();
+      _ownerId = owner.isEmpty || owner == 'unknown' ? null : owner;
+    }
+    final list = (existing['icerik'] as List?) ?? const [];
+    final fallback =
+        mounted
+            ? context.read<CurrentStudent>().currentStudentId?.trim()
+            : null;
+    if (_ownerId == null || _ownerId!.isEmpty) {
+      _ownerId = (fallback != null && fallback.isNotEmpty) ? fallback : null;
+    }
 
+    _icerik.clear();
     if (list.isEmpty) {
       _icerik.add({'resimPath': null, 'sesPath': null, 'metin': ''});
     } else {
       for (final e in list) {
-        final m = Map<String, dynamic>.from(e as Map);
-        // Kayıp dosyaları temizle
-        final rp = (m['resimPath'] as String?);
-        if (rp != null && rp.isNotEmpty && !File(rp).existsSync()) m['resimPath'] = null;
-        final sp = (m['sesPath'] as String?);
-        if (sp != null && sp.isNotEmpty && !File(sp).existsSync()) m['sesPath'] = null;
+        final m = Map<String, dynamic>.from(
+          (e as Map?)?.cast<dynamic, dynamic>() ?? const <String, dynamic>{},
+        );
+        final rp = (m['resimPath'] as String?)?.trim();
+        if (rp != null && rp.isNotEmpty && !File(rp).existsSync()) {
+          m['resimPath'] = null;
+        }
+        final sp = (m['sesPath'] as String?)?.trim();
+        if (sp != null && sp.isNotEmpty && !File(sp).existsSync()) {
+          m['sesPath'] = null;
+        }
         _icerik.add({
           'resimPath': m['resimPath'],
           'sesPath': m['sesPath'],
@@ -70,7 +110,10 @@ class _CizelgeDetayResimliSesliSayfasiState
         });
       }
     }
-    setState(() {});
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -98,10 +141,56 @@ class _CizelgeDetayResimliSesliSayfasiState
   }
 
   Future<void> _saveSilent() async {
-    await _box.put(widget.cizelgeAdi, {
-      'tur': 'resimli_sesli',
-      'icerik': _icerik,
-    });
+    final box = _box ?? await _boxFuture;
+    final now = DateTime.now();
+    final raw = box.get(widget.cizelgeAdi);
+    FinixRecord? record;
+    if (raw is Map) {
+      record = FinixDataService.decode(
+        raw,
+        module: 'cizelge',
+      );
+      if (!FinixDataService.isRecord(raw)) {
+        await box.put(widget.cizelgeAdi, record.toMap());
+      }
+    }
+
+    final payload = record != null
+        ? Map<String, dynamic>.from(record.payload)
+        : <String, dynamic>{};
+    payload
+      ..['tur'] = 'resimli_sesli'
+      ..['icerik'] = _icerik
+          .map((e) => {
+                'resimPath': e['resimPath'],
+                'sesPath': e['sesPath'],
+                'metin': (e['metin'] ?? '').toString(),
+              })
+          .toList()
+      ..['updatedAt'] = now.millisecondsSinceEpoch
+      ..putIfAbsent('createdAt', () =>
+          (_recordCreatedAt ?? record?.createdAt ?? now).millisecondsSinceEpoch);
+
+    final fallback =
+        mounted
+            ? context.read<CurrentStudent>().currentStudentId?.trim()
+            : null;
+    final owner = _ownerId?.trim() ?? fallback;
+    _ownerId = owner?.isNotEmpty == true ? owner : null;
+
+    final updatedRecord = FinixDataService.buildRecord(
+      id: widget.cizelgeAdi,
+      module: 'cizelge',
+      data: payload,
+      studentId: _ownerId,
+      programName: widget.cizelgeAdi,
+      createdAt: _recordCreatedAt ?? record?.createdAt ?? now,
+      updatedAt: now,
+    );
+    _recordCreatedAt = updatedRecord.createdAt;
+
+    await box.put(widget.cizelgeAdi, updatedRecord.toMap());
+    unawaited(FinixDataService.saveRecord(updatedRecord));
   }
 
   void _addCard() {
@@ -395,19 +484,51 @@ class _CizelgeDetayResimliSesliSayfasiState
             ),
             const SizedBox(height: 12),
             // Metin
-            TextField(
-              controller: TextEditingController(text: (m['metin'] ?? '').toString()),
-              onChanged: (v) {
-                _icerik[index]['metin'] = v;
-                _saveSilent();
-              },
-              maxLines: null,
-              decoration: const InputDecoration(
-                hintText: 'Bu sayfa için not/başlık…',
-                border: OutlineInputBorder(borderSide: BorderSide(width: 2)),
-                enabledBorder: OutlineInputBorder(borderSide: BorderSide(width: 2)),
-                focusedBorder: OutlineInputBorder(borderSide: BorderSide(width: 2)),
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: TextEditingController(
+                      text: (m['metin'] ?? '').toString(),
+                    ),
+                    onChanged: (v) {
+                      _icerik[index]['metin'] = v;
+                      _saveSilent();
+                    },
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      hintText: 'Bu sayfa için not/başlık…',
+                      border: OutlineInputBorder(borderSide: BorderSide(width: 2)),
+                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(width: 2)),
+                      focusedBorder: OutlineInputBorder(borderSide: BorderSide(width: 2)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FinixAIButton.small(
+                  module: 'cizelge',
+                  contextDescription:
+                      'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                  initialText: (m['metin'] ?? '').toString(),
+                  onResult: (aiText) {
+                    if (!mounted) return;
+                    setState(() {
+                      _icerik[index]['metin'] = aiText;
+                      // TODO: Çok adımlı yanıtları kartlara paylaştır.
+                    });
+                    _saveSilent();
+                  },
+                  programNameBuilder: () {
+                    final trimmed = widget.cizelgeAdi.trim();
+                    return trimmed.isEmpty ? null : trimmed;
+                  },
+                  logMetadata: {
+                    'mode': 'resimli_sesli',
+                    'cardIndex': index,
+                  },
+                ),
+              ],
             ),
           ],
         ),
@@ -418,22 +539,71 @@ class _CizelgeDetayResimliSesliSayfasiState
   // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Çizelge: ${widget.cizelgeAdi}'),
-        actions: [
-          IconButton(
-            tooltip: 'Kart Ekle',
-            icon: const Icon(Icons.add),
-            onPressed: _addCard,
+    return FutureBuilder<void>(
+      future: _initialLoad,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: Text('Çizelge: ${widget.cizelgeAdi}')),
+            body: Center(
+              child: Text('Çizelge yüklenemedi: ${snapshot.error}'),
+            ),
+          );
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('Çizelge: ${widget.cizelgeAdi}'),
+            actions: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: FinixAIButton.iconOnly(
+                    module: 'cizelge',
+                    contextDescription:
+                        'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                    initialText: _icerik.isEmpty
+                        ? ''
+                        : (_icerik[_currentIndex]['metin'] ?? '').toString(),
+                    onResult: (aiText) {
+                      if (!mounted) return;
+                      setState(() {
+                        if (_icerik.isEmpty) {
+                          _icerik.add({'resimPath': null, 'sesPath': null, 'metin': aiText});
+                        } else {
+                          _icerik[_currentIndex]['metin'] = aiText;
+                        }
+                      });
+                      _saveSilent();
+                    },
+                    programName: widget.cizelgeAdi,
+                    logMetadata: const {
+                      'scope': 'resimli_sesli_app_bar',
+                    },
+                  ),
+                ),
+              IconButton(
+                tooltip: 'Kart Ekle',
+                icon: const Icon(Icons.add),
+                onPressed: _addCard,
+              ),
+            ],
           ),
-        ],
-      ),
-      body: PageView.builder(
-        controller: _page,
-        itemCount: _icerik.length,
-        itemBuilder: (_, i) => _buildCard(i),
-      ),
+          body: SafeArea(
+            child: PageView.builder(
+              controller: _page,
+              onPageChanged: (i) => setState(() => _currentIndex = i),
+              itemCount: _icerik.length,
+              itemBuilder: (_, i) => _buildCard(i),
+            ),
+          ),
+        );
+      },
     );
   }
 }

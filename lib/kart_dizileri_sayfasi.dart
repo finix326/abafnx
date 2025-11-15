@@ -1,8 +1,14 @@
 // lib/kart_dizileri_sayfasi.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:provider/provider.dart';
+
+import 'ai/finix_ai_button.dart';
+import 'app_state/current_student.dart';
 import 'kart_detay_sayfasi.dart';
+import 'services/finix_data_service.dart';
 
 class KartDizileriSayfasi extends StatefulWidget {
   const KartDizileriSayfasi({super.key});
@@ -12,12 +18,12 @@ class KartDizileriSayfasi extends StatefulWidget {
 }
 
 class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
-  late Box _box;
+  late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
 
   @override
   void initState() {
     super.initState();
-    _box = Hive.box('kart_dizileri');
+    _boxFuture = Hive.openBox<Map<dynamic, dynamic>>('kart_dizileri');
   }
 
   Future<void> _yeniDiziEkle() async {
@@ -26,9 +32,28 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Yeni Kart Dizisi'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'Örn: Renkler'),
+        content: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                decoration: const InputDecoration(hintText: 'Örn: Renkler'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FinixAIButton.small(
+              module: 'kart_dizileri',
+              contextDescription:
+                  'Bu kart için açıklama ve kullanım yönergesi öner',
+              initialText: controller.text,
+              onResult: (aiText) => controller.text = aiText,
+              programNameBuilder: () {
+                final trimmed = controller.text.trim();
+                return trimmed.isEmpty ? null : trimmed;
+              },
+            ),
+          ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
@@ -38,15 +63,35 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
     );
 
     if (onay == true && controller.text.trim().isNotEmpty) {
-      final id = DateTime.now().millisecondsSinceEpoch.toString();
-      await _box.put(id, {'id': id, 'ad': controller.text.trim(), 'kartlar': []});
+      final createdAt = DateTime.now();
+      final id = createdAt.millisecondsSinceEpoch.toString();
+      final box = await _boxFuture;
+      final studentId =
+          context.read<CurrentStudent>().currentStudentId?.trim();
+      final data = {
+        'id': id,
+        'ad': controller.text.trim(),
+        'kartlar': <Map<String, dynamic>>[],
+        'createdAt': createdAt.millisecondsSinceEpoch,
+      };
+      final record = FinixDataService.buildRecord(
+        id: id,
+        module: 'kart_dizileri',
+        data: data,
+        studentId: studentId,
+        programName: data['ad']?.toString(),
+        createdAt: createdAt,
+      );
+      await box.put(id, record.toMap());
+      unawaited(FinixDataService.saveRecord(record));
       setState(() {});
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final keys = _box.keys.toList();
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kart Dizileri')),
@@ -54,31 +99,101 @@ class _KartDizileriSayfasiState extends State<KartDizileriSayfasi> {
         onPressed: _yeniDiziEkle,
         child: const Icon(Icons.add),
       ),
-      body: ValueListenableBuilder(
-        valueListenable: _box.listenable(),
-        builder: (context, box, _) {
-          if (box.isEmpty) {
-            return const Center(child: Text('Henüz kart dizisi eklenmedi.'));
+      body: FutureBuilder<Box<Map<dynamic, dynamic>>>(
+        future: _boxFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: Text('Kart dizileri kutusu açılamadı.'));
           }
 
-          final keys = box.keys.toList();
-          return ListView.builder(
-            itemCount: keys.length,
-            itemBuilder: (_, i) {
-              final data = Map<String, dynamic>.from(box.get(keys[i]));
-              return ListTile(
-                title: Text(data['ad'] ?? 'Adsız Dizi'),
-                subtitle: Text('${(data['kartlar'] as List).length} kart'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => KartDetaySayfasi(
-                      diziId: data['id'],
-                      diziAdi: data['ad'],
-                    ),
+          final box = snapshot.data!;
+          return ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
+            valueListenable: box.listenable(),
+            builder: (context, _, __) {
+              final diziler = <Map<String, dynamic>>[];
+              final normalizedCurrentId = currentStudentId?.trim();
+
+              for (final key in box.keys) {
+                final raw = box.get(key);
+                if (raw is! Map) continue;
+
+                final record = FinixDataService.decode(
+                  raw,
+                  module: 'kart_dizileri',
+                  fallbackStudentId: currentStudentId,
+                );
+                if (!FinixDataService.isRecord(raw)) {
+                  unawaited(box.put(key, record.toMap()));
+                }
+
+                final ownerId = record.studentId.trim();
+
+                final matchesStudent = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
+                    ? ownerId.isEmpty || ownerId == 'unknown'
+                    : ownerId == normalizedCurrentId;
+
+                if (!matchesStudent) continue;
+
+                final normalized = Map<String, dynamic>.from(record.payload);
+                normalized['id'] = normalized['id'] ?? key.toString();
+                normalized['createdAt'] = normalized['createdAt'] ??
+                    record.createdAt.millisecondsSinceEpoch;
+                normalized['kartlar'] =
+                    List<Map<String, dynamic>>.from((normalized['kartlar']
+                            as List? ??
+                        const [])
+                        .map((e) =>
+                            Map<String, dynamic>.from(e as Map<dynamic, dynamic>)));
+
+                diziler.add(normalized);
+              }
+
+              if (diziler.isEmpty) {
+                final emptyText = (normalizedCurrentId == null ||
+                        normalizedCurrentId.isEmpty)
+                    ? 'Henüz kart dizisi eklenmedi.\nSağ alttan yeni bir tane oluştur.'
+                    : 'Bu öğrenci için kart dizisi yok.\nSağ alttan yeni bir tane oluştur.';
+                return Center(
+                  child: Text(
+                    emptyText,
+                    textAlign: TextAlign.center,
                   ),
-                ),
+                );
+              }
+
+              diziler.sort((a, b) {
+                final at = (a['createdAt'] as int?) ??
+                    int.tryParse((a['id'] ?? '').toString()) ?? 0;
+                final bt = (b['createdAt'] as int?) ??
+                    int.tryParse((b['id'] ?? '').toString()) ?? 0;
+                return bt.compareTo(at);
+              });
+
+              return ListView.builder(
+                itemCount: diziler.length,
+                itemBuilder: (_, i) {
+                  final data = diziler[i];
+                  final kartlar = (data['kartlar'] as List).length;
+
+                  return ListTile(
+                    title: Text(data['ad']?.toString() ?? 'Adsız Dizi'),
+                    subtitle: Text('$kartlar kart'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => KartDetaySayfasi(
+                          diziId: data['id'].toString(),
+                          diziAdi: data['ad']?.toString() ?? 'Adsız Dizi',
+                        ),
+                      ),
+                    ),
+                  );
+                },
               );
             },
           );

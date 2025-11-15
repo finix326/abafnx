@@ -1,7 +1,11 @@
 // lib/hem/saglik_ogrenci_listesi_page.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:provider/provider.dart';
+
+import '../app_state/current_student.dart';
 
 import 'saglik_box.dart'; // health_students kutusunu güvenli açmak için
 import 'saglik_ogrenci_form_page.dart';
@@ -18,16 +22,42 @@ class SaglikOgrenciListesiPage extends StatefulWidget {
 class _SaglikOgrenciListesiPageState extends State<SaglikOgrenciListesiPage> {
   Future<Box> _boxFuture = ensureHealthBox();
 
-  List<MapEntry<dynamic, dynamic>> _entries(Box box) {
+  List<MapEntry<dynamic, dynamic>> _entries(
+    Box box,
+    String currentStudentId,
+  ) {
+    final normalizedCurrent = currentStudentId.trim();
     final keys = box.keys.toList();
-    return keys
-        .map((k) => MapEntry(k, box.get(k)))
-        .toList()
-      ..sort((a, b) {
-        final an = (a.value?['ad'] ?? '').toString().toLowerCase();
-        final bn = (b.value?['ad'] ?? '').toString().toLowerCase();
-        return an.compareTo(bn);
-      });
+    final results = <MapEntry<dynamic, dynamic>>[];
+
+    for (final key in keys) {
+      final raw = box.get(key);
+      if (raw is! Map) continue;
+
+      final map = Map<String, dynamic>.from(
+        (raw as Map).cast<dynamic, dynamic>(),
+      );
+      final owner = (map['studentId'] ?? '').toString().trim();
+
+      if (owner.isEmpty) {
+        map['studentId'] = normalizedCurrent;
+        unawaited(box.put(key, map));
+        results.add(MapEntry(key, map));
+        continue;
+      }
+
+      if (owner == normalizedCurrent) {
+        results.add(MapEntry(key, map));
+      }
+    }
+
+    results.sort((a, b) {
+      final an = (a.value?['ad'] ?? '').toString().toLowerCase();
+      final bn = (b.value?['ad'] ?? '').toString().toLowerCase();
+      return an.compareTo(bn);
+    });
+
+    return results;
   }
 
   Future<void> _refresh() async {
@@ -38,6 +68,16 @@ class _SaglikOgrenciListesiPageState extends State<SaglikOgrenciListesiPage> {
 
   @override
   Widget build(BuildContext context) {
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
+
+    if (currentStudentId == null || currentStudentId.trim().isEmpty) {
+      return const Scaffold(
+        appBar: AppBar(title: Text('Sağlık')),
+        body: Center(child: Text('Lütfen önce bir öğrenci seçin.')),
+      );
+    }
+
     return FutureBuilder<Box>(
       future: _boxFuture,
       builder: (context, snap) {
@@ -53,7 +93,7 @@ class _SaglikOgrenciListesiPageState extends State<SaglikOgrenciListesiPage> {
         }
 
         final box = snap.data!;
-        final items = _entries(box);
+        final items = _entries(box, currentStudentId!);
 
         return Scaffold(
           appBar: AppBar(

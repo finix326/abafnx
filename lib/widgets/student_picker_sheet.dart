@@ -32,7 +32,7 @@ class _StudentPickerSheetState extends State<_StudentPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
+    final currentId = context.watch<CurrentStudent>().currentStudentId;
     final items = box.values.toList(growable: false);
 
     return SafeArea(

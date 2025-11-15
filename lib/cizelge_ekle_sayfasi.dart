@@ -1,7 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'cizelge_detay_sayfasi.dart';
+import 'package:provider/provider.dart';
+
+import 'ai/finix_ai_button.dart';
+import 'app_state/current_student.dart';
 import 'cizelge_detay_resimli_sesli_sayfasi.dart';
+import 'cizelge_detay_sayfasi.dart';
+import 'services/finix_data_service.dart';
 
 class CizelgeEkleSayfasi extends StatefulWidget {
   final String tur;
@@ -14,28 +21,64 @@ class CizelgeEkleSayfasi extends StatefulWidget {
 
 class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
   final TextEditingController _controller = TextEditingController();
-  final Box _box = Hive.box('cizelge_kutusu');
+  late final Future<Box<Map<dynamic, dynamic>>> _boxFuture;
 
-  void _kaydet() {
+  void _applyAISuggestion(String aiText) {
+    if (!mounted) return;
+    setState(() => _controller.text = aiText);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _boxFuture = Hive.openBox<Map<dynamic, dynamic>>('cizelge_kutusu');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _kaydet() async {
     final ad = _controller.text.trim();
-    if (ad.isNotEmpty) {
-      // 🔧 Türü yalnızca "yazili" ya da "resimli_sesli" olarak kaydet
-      final kaydedilecekTur = widget.tur == 'yazili' ? 'yazili' : 'resimli_sesli';
+    if (ad.isEmpty) return;
 
-      _box.put(ad, {'tur': kaydedilecekTur, 'icerik': []});
+    final kaydedilecekTur = widget.tur == 'yazili' ? 'yazili' : 'resimli_sesli';
+    final box = await _boxFuture;
+    final now = DateTime.now();
+    final studentId = context.read<CurrentStudent>().currentStudentId?.trim();
 
-      Widget hedefSayfa;
-      if (kaydedilecekTur == 'yazili') {
-        hedefSayfa = CizelgeDetaySayfasi(cizelgeAdi: ad, tur: kaydedilecekTur);
-      } else {
-        hedefSayfa = CizelgeDetayResimliSesliSayfasi(cizelgeAdi: ad);
-      }
+    final data = <String, dynamic>{
+      'ad': ad,
+      'cizelgeAdi': ad,
+      'tur': kaydedilecekTur,
+      'icerik': <Map<String, dynamic>>[],
+      'createdAt': now.millisecondsSinceEpoch,
+      'updatedAt': now.millisecondsSinceEpoch,
+    };
+    final record = FinixDataService.buildRecord(
+      id: ad,
+      module: 'cizelge',
+      data: data,
+      studentId: studentId,
+      programName: ad,
+      createdAt: now,
+      updatedAt: now,
+    );
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => hedefSayfa),
-      );
-    }
+    await box.put(ad, record.toMap());
+    unawaited(FinixDataService.saveRecord(record));
+
+    final hedefSayfa = kaydedilecekTur == 'yazili'
+        ? CizelgeDetaySayfasi(cizelgeAdi: ad, tur: kaydedilecekTur)
+        : CizelgeDetayResimliSesliSayfasi(cizelgeAdi: ad);
+
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => hedefSayfa),
+    );
   }
 
   @override
@@ -43,24 +86,76 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
     final turYazi = widget.tur == 'yazili' ? 'Yazılı' : 'Resimli/Sesli';
 
     return Scaffold(
-      appBar: AppBar(title: Text('Yeni Çizelge ($turYazi)')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: _controller,
-              decoration: const InputDecoration(
-                labelText: 'Çizelge Adı',
-                border: OutlineInputBorder(),
+      appBar: AppBar(
+        title: Text('Yeni Çizelge ($turYazi)'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: FinixAIButton.iconOnly(
+              module: 'cizelge',
+              contextDescription:
+                  'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+              initialText: _controller.text,
+              onResult: _applyAISuggestion,
+              programNameBuilder: () {
+                final trimmed = _controller.text.trim();
+                return trimmed.isEmpty ? null : trimmed;
+              },
+              logMetadata: {
+                'scope': 'cizelge_create_app_bar',
+                'type': widget.tur,
+              },
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Çizelge Adı',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                FinixAIButton.small(
+                  module: 'cizelge',
+                  contextDescription:
+                      'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                  initialText: _controller.text,
+                  onResult: _applyAISuggestion,
+                  programNameBuilder: () {
+                    final trimmed = _controller.text.trim();
+                    return trimmed.isEmpty ? null : trimmed;
+                  },
+                  logMetadata: {
+                    'scope': 'cizelge_create_field',
+                    'type': widget.tur,
+                  },
+                ),
+              ],
+            ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 48,
+                child: FilledButton.icon(
+                  onPressed: _kaydet,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Oluştur'),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _kaydet,
-              child: const Text('Oluştur'),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -108,67 +108,83 @@ class HomePage extends StatelessWidget {
       appBar: AppBar(title: const Text('Ana Sayfa')),
       drawer: const _TerapistDrawer(),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: GridView.count(
+            crossAxisCount: 3,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: 1,
             children: [
-              _BigButton(
-                text: 'Eşleştirme Oyunu',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const EslestirmeOyunListesiPage(),
-                    ),
-                  );
-                },
+              _HomeActionCard(
+                action: _HomeAction(
+                  title: 'Eşleştirme Oyunu',
+                  icon: Icons.grid_view_rounded,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const EslestirmeOyunListesiPage(),
+                      ),
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: 16),
-              _BigButton(
-                text: 'Sınıflama Oyunu',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const SiniflamaOyunuSayfasi()),
-                  );
-                },
+              _HomeActionCard(
+                action: _HomeAction(
+                  title: 'Sınıflama Oyunu',
+                  icon: Icons.category_rounded,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SiniflamaOyunuSayfasi(),
+                      ),
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: 16),
-              _BigButton(
-                text: 'Hafıza Oyunu',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const HafizaOyunuListesiSayfasi(),
-                    ),
-                  );
-                },
+              _HomeActionCard(
+                action: _HomeAction(
+                  title: 'Hafıza Oyunu',
+                  icon: Icons.memory_rounded,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const HafizaOyunuListesiSayfasi(),
+                      ),
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: 16),
-              _BigButton(
-                text: 'Sohbet',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const SohbetHomePage(),
-                    ),
-                  );
-                },
+              _HomeActionCard(
+                action: _HomeAction(
+                  title: 'Sohbet',
+                  icon: Icons.chat_bubble_rounded,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SohbetHomePage(),
+                      ),
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: 16),
-              _BigButton(
-                text: 'Kartlar',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const KartlarSayfasi()),
-                  );
-                },
+              _HomeActionCard(
+                action: _HomeAction(
+                  title: 'Kartlar',
+                  icon: Icons.style_rounded,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const KartlarSayfasi(),
+                      ),
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -178,21 +194,54 @@ class HomePage extends StatelessWidget {
   }
 }
 
-class _BigButton extends StatelessWidget {
-  final String text;
+class _HomeAction {
+  const _HomeAction({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final IconData icon;
   final VoidCallback onTap;
-  const _BigButton({required this.text, required this.onTap});
+}
+
+class _HomeActionCard extends StatelessWidget {
+  const _HomeActionCard({required this.action});
+
+  final _HomeAction action;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 88,
-      child: ElevatedButton(
-        onPressed: onTap,
-        style: ElevatedButton.styleFrom(
-          textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      elevation: 3,
+      shadowColor: colorScheme.shadow.withOpacity(0.2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: action.onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                action.icon,
+                size: 36,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                action.title,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
+          ),
         ),
-        child: Text(text),
       ),
     );
   }
@@ -203,7 +252,8 @@ class _TerapistDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
+    final currentStudentId =
+        context.watch<CurrentStudent>().currentStudentId;
 
     return Drawer(
       child: ListView(
@@ -218,7 +268,7 @@ class _TerapistDrawer extends StatelessWidget {
               showStudentPickerSheet(context);
             },
           ),
-          if (currentId != null) const _AktifOgrenciTile(),
+          if (currentStudentId != null) const _AktifOgrenciTile(),
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.add_circle_outline),
@@ -260,13 +310,16 @@ class _TerapistDrawer extends StatelessWidget {
             onTap: () async {
               // GÜVENLİ YAPI: Önce context'e bağlı değişkenleri al
               final navigator = Navigator.of(context);
-              final studentId = context.read<CurrentStudent>().currentId;
+              final studentId =
+                  context.read<CurrentStudent>().currentStudentId;
 
               // Sonra context'i son kez kullan (pop)
               navigator.pop();
 
               // Sonra asenkron işlemi yap
-              final boxName = studentId != null ? 'bep_raporlari_$studentId' : 'bep_raporlari';
+              final boxName = studentId != null
+                  ? 'bep_raporlari_$studentId'
+                  : 'bep_raporlari';
               final box = await Hive.openBox(boxName);
 
               // Güvenli navigator ile yeni sayfayı aç
@@ -312,9 +365,12 @@ class _TerapistDrawerHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
+    final current = context.watch<CurrentStudent>();
+    final currentStudentId = current.currentStudentId;
     final students = Hive.box<Student>('students');
-    final ad = (currentId == null) ? null : (students.get(currentId)?.ad);
+    final ad = (currentStudentId == null)
+        ? null
+        : (students.get(currentStudentId)?.ad ?? current.currentStudent?.ad);
 
     return InkWell(
       onTap: () => showStudentPickerSheet(context),
@@ -344,9 +400,12 @@ class _AktifOgrenciTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
+    final current = context.watch<CurrentStudent>();
+    final currentStudentId = current.currentStudentId;
     final students = Hive.box<Student>('students');
-    final ad = (currentId == null) ? null : (students.get(currentId)?.ad);
+    final ad = (currentStudentId == null)
+        ? null
+        : (students.get(currentStudentId)?.ad ?? current.currentStudent?.ad);
 
     return ListTile(
       leading: const Icon(Icons.person_outline),

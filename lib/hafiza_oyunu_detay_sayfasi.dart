@@ -1,7 +1,7 @@
 // lib/hafiza_oyunu_detay_sayfasi.dart
 
+import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'hafiza_oyunu_model.dart';
+import 'services/finix_data_service.dart';
 
 class HafizaOyunuDetaySayfasi extends StatefulWidget {
   final String oyunId;
@@ -22,8 +23,10 @@ class HafizaOyunuDetaySayfasi extends StatefulWidget {
 
 class _HafizaOyunuDetaySayfasiState extends State<HafizaOyunuDetaySayfasi>
     with TickerProviderStateMixin { // Animasyon için TickerProvider eklendi
-  late final Box _box;
+  late final Box<Map<dynamic, dynamic>> _box;
   HafizaOyunu? _oyun;
+  String? _ownerId;
+  DateTime? _recordCreatedAt;
   bool _hazirMod = true;
 
   List<String> _deck = [];
@@ -43,19 +46,31 @@ class _HafizaOyunuDetaySayfasiState extends State<HafizaOyunuDetaySayfasi>
   @override
   void initState() {
     super.initState();
-    _box = Hive.box('hafiza_oyunlari');
+    _box = Hive.box<Map<dynamic, dynamic>>('hafiza_oyunlari');
     _loadGame();
   }
 
   void _loadGame() {
-    final raw = (_box.get(widget.oyunId) as Map?) ?? {};
-    final oyun = HafizaOyunu.fromMap(widget.oyunId, raw);
+    final raw = _box.get(widget.oyunId);
+    if (raw is! Map) return;
+
+    final record = FinixDataService.decode(
+      raw,
+      module: 'hafiza_oyunlari',
+    );
+    if (!FinixDataService.isRecord(raw)) {
+      unawaited(_box.put(widget.oyunId, record.toMap()));
+    }
+
+    final oyun = HafizaOyunu.fromMap(widget.oyunId, record.payload);
 
     final allImagesSelected =
         oyun.imagePaths.where((p) => p.isNotEmpty).length == oyun.pairCount;
 
     setState(() {
       _oyun = oyun;
+      _ownerId = record.studentId.isEmpty ? null : record.studentId;
+      _recordCreatedAt = record.createdAt;
       // Eğer tüm görseller seçiliyse, bu sayfaya girildiğinde direkt oyun moduna hazırlanacağız
       _hazirMod = !allImagesSelected;
       _adjustCardSizeForPairs(oyun.pairCount);
@@ -72,7 +87,19 @@ class _HafizaOyunuDetaySayfasiState extends State<HafizaOyunuDetaySayfasi>
 
   Future<void> _saveGame() async {
     if (_oyun == null) return;
-    await _box.put(_oyun!.id, _oyun!.toMap());
+    final now = DateTime.now();
+    final record = FinixDataService.buildRecord(
+      id: _oyun!.id,
+      module: 'hafiza_oyunlari',
+      data: _oyun!.toMap(),
+      studentId: _ownerId,
+      programName: _oyun!.title,
+      createdAt:
+          _recordCreatedAt ?? DateTime.fromMillisecondsSinceEpoch(_oyun!.createdAt),
+      updatedAt: now,
+    );
+    await _box.put(_oyun!.id, record.toMap());
+    unawaited(FinixDataService.saveRecord(record));
   }
 
   Future<void> _pickImageForIndex(int index) async {

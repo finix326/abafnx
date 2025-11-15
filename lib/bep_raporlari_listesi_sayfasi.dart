@@ -9,14 +9,16 @@ class BepRaporlariListesiSayfasi extends StatelessWidget {
   const BepRaporlariListesiSayfasi({super.key});
 
   Future<Box> _openBox(BuildContext context) async {
-    final currentId = context.read<CurrentStudent>().currentId;
-    final boxName = currentId != null ? 'bep_raporlari_$currentId' : 'bep_raporlari';
+    final currentId = context.read<CurrentStudent>().currentStudentId;
+    final boxName = currentId != null
+        ? 'bep_raporlari_$currentId'
+        : 'bep_raporlari';
     return Hive.openBox(boxName);
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentId = context.watch<CurrentStudent>().currentId;
+    final currentId = context.watch<CurrentStudent>().currentStudentId;
 
     return FutureBuilder<Box>(
       future: _openBox(context),
