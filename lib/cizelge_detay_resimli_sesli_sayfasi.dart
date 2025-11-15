@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
+import 'ai/finix_ai_button.dart';
 import 'app_state/current_student.dart';
 import 'services/finix_data_service.dart';
 
@@ -44,6 +45,7 @@ class _CizelgeDetayResimliSesliSayfasiState
   late final Future<void> _initialLoad;
   String? _ownerId;
   int? _recordCreatedAt;
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -472,20 +474,41 @@ class _CizelgeDetayResimliSesliSayfasiState
             ),
             const SizedBox(height: 12),
             // Metin
-            TextField(
-              controller:
-                  TextEditingController(text: (m['metin'] ?? '').toString()),
-              onChanged: (v) {
-                _icerik[index]['metin'] = v;
-                _saveSilent();
-              },
-              maxLines: null,
-              decoration: const InputDecoration(
-                hintText: 'Bu sayfa için not/başlık…',
-                border: OutlineInputBorder(borderSide: BorderSide(width: 2)),
-                enabledBorder: OutlineInputBorder(borderSide: BorderSide(width: 2)),
-                focusedBorder: OutlineInputBorder(borderSide: BorderSide(width: 2)),
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: TextEditingController(
+                      text: (m['metin'] ?? '').toString(),
+                    ),
+                    onChanged: (v) {
+                      _icerik[index]['metin'] = v;
+                      _saveSilent();
+                    },
+                    maxLines: null,
+                    decoration: const InputDecoration(
+                      hintText: 'Bu sayfa için not/başlık…',
+                      border: OutlineInputBorder(borderSide: BorderSide(width: 2)),
+                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(width: 2)),
+                      focusedBorder: OutlineInputBorder(borderSide: BorderSide(width: 2)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FinixAIButton.small(
+                  contextDescription:
+                      'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                  initialText: (m['metin'] ?? '').toString(),
+                  onResult: (aiText) {
+                    setState(() {
+                      _icerik[index]['metin'] = aiText;
+                      // TODO: Çok adımlı yanıtları kartlara paylaştır.
+                    });
+                    _saveSilent();
+                  },
+                ),
+              ],
             ),
           ],
         ),
@@ -518,6 +541,26 @@ class _CizelgeDetayResimliSesliSayfasiState
           appBar: AppBar(
             title: Text('Çizelge: ${widget.cizelgeAdi}'),
             actions: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: FinixAIButton.iconOnly(
+                  contextDescription:
+                      'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                  initialText: _icerik.isEmpty
+                      ? ''
+                      : (_icerik[_currentIndex]['metin'] ?? '').toString(),
+                  onResult: (aiText) {
+                    setState(() {
+                      if (_icerik.isEmpty) {
+                        _icerik.add({'resimPath': null, 'sesPath': null, 'metin': aiText});
+                      } else {
+                        _icerik[_currentIndex]['metin'] = aiText;
+                      }
+                    });
+                    _saveSilent();
+                  },
+                ),
+              ),
               IconButton(
                 tooltip: 'Kart Ekle',
                 icon: const Icon(Icons.add),
@@ -527,6 +570,7 @@ class _CizelgeDetayResimliSesliSayfasiState
           ),
           body: PageView.builder(
             controller: _page,
+            onPageChanged: (i) => setState(() => _currentIndex = i),
             itemCount: _icerik.length,
             itemBuilder: (_, i) => _buildCard(i),
           ),

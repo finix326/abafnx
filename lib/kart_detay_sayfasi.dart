@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import 'ai/finix_ai_button.dart';
 import 'services/finix_data_service.dart';
 
 class KartDetaySayfasi extends StatefulWidget {
@@ -408,6 +409,8 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
           final bool fotoVar = (kart['foto'] != null && (kart['foto'] as String).isNotEmpty);
           final bool sesVar = (kart['ses'] != null && (kart['ses'] as String).isNotEmpty);
           final bool recording = (_recordingCardId == id);
+          final textController =
+              TextEditingController(text: (kart['metin'] ?? '').toString());
 
                   return GestureDetector(
                     onTap: sesVar ? () => _playOrStop(kart) : null,
@@ -484,20 +487,40 @@ class _KartDetaySayfasiState extends State<KartDetaySayfasi> {
                   // METİN KUTUSU (kalıcı)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-                    child: TextFormField(
-                      initialValue: (kart['metin'] ?? '').toString(),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'Metin ekle...',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-                      ),
-                      onChanged: (v) {
-                        kart['metin'] = v;
-                        _guncelleKart(kart);
-                      },
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: textController,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              hintText: 'Metin ekle...',
+                              border: OutlineInputBorder(),
+                              contentPadding:
+                                  EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                            ),
+                            onChanged: (v) {
+                              kart['metin'] = v;
+                              _guncelleKart(kart);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FinixAIButton.small(
+                          contextDescription:
+                              'Bu kart için açıklama ve kullanım yönergesi öner',
+                          initialText: textController.text,
+                          onResult: (aiText) {
+                            textController.text = aiText;
+                            kart['metin'] = aiText;
+                            _guncelleKart(kart);
+                            setState(() {});
+                          },
+                        ),
+                      ],
                     ),
                   ),
                 ],

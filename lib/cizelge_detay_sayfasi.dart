@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
+import 'ai/finix_ai_button.dart';
 import 'app_state/current_student.dart';
 import 'services/finix_data_service.dart';
 
@@ -185,6 +186,32 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
           appBar: AppBar(
             title: Text(widget.cizelgeAdi),
             actions: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: FinixAIButton.iconOnly(
+                  contextDescription:
+                      'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                  initialText: _icerik.join('\n'),
+                  onResult: (aiText) {
+                    final suggestions = aiText
+                        .split(RegExp(r'\r?\n'))
+                        .map((e) => e.trim())
+                        .where((e) => e.isNotEmpty)
+                        .toList();
+                    setState(() {
+                      final steps = suggestions.isEmpty
+                          ? <String>[aiText.trim()]
+                          : suggestions;
+                      _icerik
+                        ..clear()
+                        ..addAll(steps);
+                      _renkler
+                        ..clear()
+                        ..addAll(List<Color>.filled(_icerik.length, Colors.white));
+                    });
+                  },
+                ),
+              ),
               IconButton(icon: const Icon(Icons.save), onPressed: _kaydet),
               IconButton(icon: const Icon(Icons.add), onPressed: _yeniKartEkle),
               IconButton(
@@ -208,11 +235,32 @@ class _CizelgeDetaySayfasiState extends State<CizelgeDetaySayfasi> {
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      TextField(
-                        controller: controller,
-                        onChanged: (v) => _icerik[i] = v,
-                        decoration: const InputDecoration(border: InputBorder.none),
-                        maxLines: null,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: controller,
+                              onChanged: (v) => _icerik[i] = v,
+                              decoration:
+                                  const InputDecoration(border: InputBorder.none),
+                              maxLines: null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          FinixAIButton.small(
+                            contextDescription:
+                                'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                            initialText: controller.text,
+                            onResult: (aiText) {
+                              controller.text = aiText;
+                              setState(() {
+                                _icerik[i] = aiText;
+                                // TODO: Çok adımlı yanıtları ayrı kartlara dağıt.
+                              });
+                            },
+                          ),
+                        ],
                       ),
                       _renkButonlari(i),
                     ],

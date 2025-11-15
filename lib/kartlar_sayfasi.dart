@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
+import 'ai/finix_ai_button.dart';
 import 'app_state/current_student.dart';
 import 'kart_detay_sayfasi.dart';
 import 'services/finix_data_service.dart';
@@ -31,9 +32,22 @@ class _KartlarSayfasiState extends State<KartlarSayfasi> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Yeni Kart Dizisi'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: 'Örn: Hayvanlar'),
+        content: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                decoration: const InputDecoration(hintText: 'Örn: Hayvanlar'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FinixAIButton.small(
+              contextDescription:
+                  'Bu kart için açıklama ve kullanım yönergesi öner',
+              initialText: controller.text,
+              onResult: (aiText) => controller.text = aiText,
+            ),
+          ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),

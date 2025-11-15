@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:provider/provider.dart';
 
+import 'ai/finix_ai_button.dart';
 import 'app_state/current_student.dart';
 import 'services/finix_data_service.dart';
 
@@ -87,14 +88,32 @@ class _VeriSayfasiState extends State<VeriSayfasi> {
             key: _formKey,
             child: ListView(
               children: [
-                TextFormField(
-                  controller: _adCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Program adı (örn. Tak-Çıkar)',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Zorunlu' : null,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _adCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Program adı (örn. Tak-Çıkar)',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty) ? 'Zorunlu' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FinixAIButton.small(
+                      contextDescription:
+                          'ABA programı için hedef ve yönerge metni öner',
+                      initialText: _adCtrl.text,
+                      onResult: (aiText) {
+                        setState(() {
+                          _adCtrl.text = aiText;
+                        });
+                      },
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 Row(

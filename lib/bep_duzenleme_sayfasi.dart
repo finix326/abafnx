@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import 'ai/finix_ai_button.dart';
 import 'app_state/current_student.dart';
 
 class BepDuzenlemeSayfasi extends StatefulWidget {
@@ -180,7 +181,12 @@ class _BepDuzenlemeSayfasiState extends State<BepDuzenlemeSayfasi> {
               ],
             ),
             _input(_tel, 'Telefon'),
-            _input(_problemDavranis, 'Problem Davranış (opsiyonel)', maxLines: 3),
+            _inputWithAI(
+              _problemDavranis,
+              'Problem Davranış (opsiyonel)',
+              contextDescription: 'BEP hedefi ve kısa vadeli amaçlar için metin öner',
+              maxLines: 3,
+            ),
             const SizedBox(height: 16),
 
             // Alanlar
@@ -219,6 +225,39 @@ class _BepDuzenlemeSayfasiState extends State<BepDuzenlemeSayfasi> {
           labelText: label,
           border: const OutlineInputBorder(),
         ),
+      ),
+    );
+  }
+
+  Widget _inputWithAI(
+    TextEditingController controller,
+    String label, {
+    required String contextDescription,
+    int maxLines = 1,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment:
+            maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              maxLines: maxLines,
+              decoration: InputDecoration(
+                labelText: label,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FinixAIButton.small(
+            contextDescription: contextDescription,
+            initialText: controller.text,
+            onResult: (aiText) => controller.text = aiText,
+          ),
+        ],
       ),
     );
   }
@@ -272,21 +311,49 @@ class _AlanKart extends StatelessWidget {
               const Divider(height: 18),
               Text('Hedef ${i + 1}', style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              TextField(
-                controller: pairs[i].uzun,
-                decoration: const InputDecoration(
-                  labelText: 'Uzun Dönem Hedef',
-                  border: OutlineInputBorder(),
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: pairs[i].uzun,
+                      decoration: const InputDecoration(
+                        labelText: 'Uzun Dönem Hedef',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FinixAIButton.small(
+                    contextDescription:
+                        'BEP hedefi ve kısa vadeli amaçlar için metin öner',
+                    initialText: pairs[i].uzun.text,
+                    onResult: (aiText) => pairs[i].uzun.text = aiText,
+                  ),
+                ],
               ),
               const SizedBox(height: 6),
-              TextField(
-                controller: pairs[i].kisa,
-                decoration: const InputDecoration(
-                  labelText: 'Kısa Dönem Hedef',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: pairs[i].kisa,
+                      decoration: const InputDecoration(
+                        labelText: 'Kısa Dönem Hedef',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 3,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FinixAIButton.small(
+                    contextDescription:
+                        'BEP hedefi ve kısa vadeli amaçlar için metin öner',
+                    initialText: pairs[i].kisa.text,
+                    onResult: (aiText) => pairs[i].kisa.text = aiText,
+                  ),
+                ],
               ),
               Align(
                 alignment: Alignment.centerRight,

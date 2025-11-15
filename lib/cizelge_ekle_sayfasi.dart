@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 
+import 'ai/finix_ai_button.dart';
 import 'app_state/current_student.dart';
 import 'cizelge_detay_resimli_sesli_sayfasi.dart';
 import 'cizelge_detay_sayfasi.dart';
@@ -80,12 +81,25 @@ class _CizelgeEkleSayfasiState extends State<CizelgeEkleSayfasi> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            TextField(
-              controller: _controller,
-              decoration: const InputDecoration(
-                labelText: 'Çizelge Adı',
-                border: OutlineInputBorder(),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    decoration: const InputDecoration(
+                      labelText: 'Çizelge Adı',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FinixAIButton.small(
+                  contextDescription:
+                      'Günlük çizelge adımlarını, çocuk için anlaşılır şekilde öner',
+                  initialText: _controller.text,
+                  onResult: (aiText) => _controller.text = aiText,
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             ElevatedButton(
